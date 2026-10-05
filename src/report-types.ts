@@ -13,7 +13,7 @@ export const reportTypes:ReportType[]=[
  {type:'Maintenance',label:'Maintenance issue',subtitle:'Equipment, premises or IT needs attention',fields:[{id:'area',label:'Affected area',options:['Equipment','Premises','IT','Other']},description,{id:'urgency',label:'Can it still be used safely?',options:['Yes','No','Unknown']}]},
  {type:'Security incident',label:'Security incident',subtitle:'Theft, aggression or suspicious activity',fields:[{id:'issue',label:'Incident',options:['Theft','Threats / aggression','Suspicious activity','Other']},description,action]},
  {type:'Complaint',label:'Complaint',subtitle:'A concern that needs follow-up',fields:[{id:'area',label:'About',options:['Service','Medicine','Privacy','Other']},description,{id:'action',label:'Action taken',options:['Resolved','Pharmacist informed','Follow-up needed','Other']}]},
- {type:'Medicine quality issue',label:'Medicine quality',subtitle:'Damaged stock, defects or storage issues',fields:[medicine,{id:'issue',label:'Problem',options:['Damaged stock','Suspected defect','Storage / temperature','Other']},{id:'action',label:'Action taken',options:['Quarantined','Pharmacist informed','Follow-up needed','Other']}]},
+ {type:'Medicine quality issue',label:'Medicine quality',subtitle:'Stock defects or storage issues',fields:[medicine,{id:'issue',label:'Problem',options:['Damaged stock','Suspected defect','Storage / temperature','Other']},{id:'action',label:'Action taken',options:['Quarantined','Pharmacist informed','Follow-up needed','Other']}]},
  {type:'Other',label:'Other',subtitle:'Something else needs to be recorded',fields:[description,action]}
 ];
 export function reportDetail(type:ReportType,answers:Record<string,string>,note:string){
