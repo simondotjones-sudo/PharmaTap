@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
-import { session,list,createReport,updateAction,history,exportPharmacy,Fault } from '../netlify/functions/_shared/service';
+import { session,list,createReport,updateAction,history,exportPharmacy,reportPhoto,Fault } from '../netlify/functions/_shared/service';
 import { guard } from '../netlify/functions/workspace.mts';
 const migration=await readFile('netlify/database/migrations/001_working-foundation/migration.sql','utf8');
 async function fixture(){
- const pg=new PGlite();await pg.exec(migration);await pg.exec(await readFile('netlify/database/migrations/002_organisation-catalogue/migration.sql','utf8'));await pg.exec(await readFile('netlify/database/migrations/003_initial-administrator/migration.sql','utf8'));await pg.exec(await readFile('netlify/database/migrations/005_report-types/migration.sql','utf8'));const db={query:async(sql:string,params:any[]=[])=>{const result=await pg.query(sql,params);return {rows:result.rows as any[]};}};
+ const pg=new PGlite();await pg.exec(migration);await pg.exec(await readFile('netlify/database/migrations/002_organisation-catalogue/migration.sql','utf8'));await pg.exec(await readFile('netlify/database/migrations/003_initial-administrator/migration.sql','utf8'));await pg.exec(await readFile('netlify/database/migrations/005_report-types/migration.sql','utf8'));await pg.exec(await readFile('netlify/database/migrations/006_report-photos/migration.sql','utf8'));const db={query:async(sql:string,params:any[]=[])=>{const result=await pg.query(sql,params);return {rows:result.rows as any[]};}};
  const org=randomUUID(),otherOrg=randomUUID(),site=randomUUID(),otherSite=randomUUID();
  await db.query('INSERT INTO organisations VALUES($1,$2),($3,$4)',[org,'Group',otherOrg,'Other group']);
  await db.query('INSERT INTO pharmacies(id,organisation_id,name) VALUES($1,$2,$3),($4,$5,$6)',[site,org,'First pharmacy',otherSite,otherOrg,'Other pharmacy']);
@@ -100,5 +100,32 @@ test('all quick-report types save their specific answers, action and audit histo
  await assert.rejects(f.transaction(()=>createReport(f.db,{id:'staff'},{...f.input,answers:{issue:'Invalid choice',medicine:'Sample'},note:''},randomUUID())),denied(400));
  await assert.rejects(f.transaction(()=>createReport(f.db,{id:'staff'},{...f.input,answers:{issue:'Medicine'},note:''},randomUUID())),denied(400));
  assert.equal((await list(f.db,{id:'manager'},f.site)).reports.length,11);
+ }finally{await f.pg.close();}
+});
+
+test('maintenance photo is atomic, private, included in export and safe to retry',async()=>{
+ const f=await fixture();try{
+ const photo=Buffer.from([255,216,255,219,255,217]),input={...f.input,type:'Maintenance',photo:photo.toString('base64')},key=randomUUID();
+ const saved=await f.transaction(()=>createReport(f.db,{id:'staff'},input,key));
+ assert.equal((await f.transaction(()=>createReport(f.db,{id:'staff'},input,key))).replayed,true);
+ assert.equal((await list(f.db,{id:'staff'},f.site)).reports[0].has_photo,true);
+ assert.deepEqual(Buffer.from((await reportPhoto(f.db,{id:'staff'},saved.id)).data),photo);
+ assert.deepEqual(Buffer.from((await reportPhoto(f.db,{id:'manager'},saved.id)).data),photo);
+ await assert.rejects(reportPhoto(f.db,{id:'other'},saved.id),denied(403));
+ await assert.rejects(reportPhoto(f.db,{id:'colleague'},saved.id),denied(403));
+ const exportData=await exportPharmacy(f.db,{id:'manager'},f.site);assert.equal(exportData.photos.length,1);assert.equal(Buffer.from(exportData.photos[0].base64,'base64').toString('hex'),photo.toString('hex'));
+ assert.equal((await history(f.db,{id:'staff'},saved.id))[0].payload.photo.bytes,photo.length);
+ await assert.rejects(f.db.query('DELETE FROM report_photos'),/append only/);
+ await assert.rejects(f.transaction(()=>createReport(f.db,{id:'staff'},{...input,photo:Buffer.from([255,216,255,220,255,217]).toString('base64')},key)),denied(409));
+ await f.pg.exec("CREATE FUNCTION reject_photo_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'simulated photo audit failure'; END $$; CREATE TRIGGER reject_photo_audit BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION reject_photo_audit();");
+ await assert.rejects(f.transaction(()=>createReport(f.db,{id:'staff'},input,randomUUID())),/simulated photo audit/);
+ assert.equal((await f.db.query('SELECT count(*)::int AS n FROM report_photos')).rows[0].n,1);
+ }finally{await f.pg.close();}
+});
+test('invalid, oversized and non-maintenance photos cannot be saved',async()=>{
+ const f=await fixture();try{
+ for(const patch of [{type:'Near miss',photo:'/9j/2//Z'},{photo:'bad'},{photo:Buffer.from('not a photo').toString('base64')},{photo:Buffer.alloc(1048577).toString('base64')}])await assert.rejects(f.transaction(()=>createReport(f.db,{id:'staff'},{...f.input,type:'Maintenance',...patch},randomUUID())),denied(400));
+ assert.equal((await list(f.db,{id:'manager'},f.site)).reports.length,0);
+ const saved=await f.transaction(()=>createReport(f.db,{id:'staff'},f.input,randomUUID()));await assert.rejects(reportPhoto(f.db,{id:'staff'},saved.id),denied(404));
  }finally{await f.pg.close();}
 });

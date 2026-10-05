@@ -19,9 +19,10 @@ await page.route('https://pharmatap.test/**',async route=>{
  if(path==='/api/workspace/session')return json({userId:'manager',pharmacies:[{id:site,name:'Test pharmacy',timezone:'Europe/Dublin',role:'manager',display_name:'Test Manager',organisation_id:'44444444-4444-4444-8444-444444444444',organisation_name:'Demo'}]});
  if(path==='/api/workspace/reports'&&request.method()==='POST'){
   keys.push(request.headers()['idempotency-key']);if(failNext){failNext=false;return json({error:'Temporary service error'},503);}
-  const body=request.postDataJSON();records=[{...body,id:report,action_id:action,title:body.type+' · '+body.answers.medicine,type:body.type,detail:JSON.stringify(body.answers),created_at:new Date().toISOString(),occurred_at:body.occurredAt,due_at:body.dueAt,created_by:'manager',owner_id:'manager',owner_name:'Test Manager',status:'Open',resolution:'',version:1}];return json({id:report});
+  const body=request.postDataJSON();records=[{...body,id:report,action_id:action,title:body.type+' · '+(body.answers.medicine||body.answers.area||'New report'),type:body.type,detail:JSON.stringify(body.answers),has_photo:Boolean(body.photo),created_at:new Date().toISOString(),occurred_at:body.occurredAt,due_at:body.dueAt,created_by:'manager',owner_id:'manager',owner_name:'Test Manager',status:'Open',resolution:'',version:1}];return json({id:report});
  }
  if(path==='/api/workspace/reports')return json({reports:records,reviewers:[{user_id:'manager',display_name:'Test Manager'}],role:request.headers()['x-pharmatap-role']||'manager'});
+ if(path.endsWith('/photo'))return route.fulfill({contentType:'image/jpeg',body:Buffer.from(records[0].photo,'base64')});
  if(path.endsWith('/history'))return json([{event:'report.created',actor_id:'manager',created_at:new Date().toISOString()}]);
  if(path==='/api/workspace/actions/'+action){const b=request.postDataJSON();records[0]={...records[0],status:b.status,resolution:b.resolution,version:2};return json(records[0]);}
  const file=path==='/'?'workspace.html':path.slice(1);
@@ -33,7 +34,7 @@ try{
  await page.locator('.home-task').first().waitFor();
  await page.getByRole('button',{name:'Profile',exact:true}).click();await page.locator('#pharmacy').waitFor();await page.locator('#role').selectOption('staff');await page.getByRole('button',{name:'Profile',exact:true}).click();
  await page.locator('[data-task=report]').click();
- assert.equal(await page.locator('[data-report-type]').count(),10);assert.equal(await page.locator('.report-switch').count(),0);
+ assert.equal(await page.locator('[data-report-type]').count(),10);const subtitle=page.locator('[data-report-type="Refusal of supply"]>span:last-child');assert.equal(Math.round(await subtitle.evaluate(el=>el.getBoundingClientRect().height/parseFloat(getComputedStyle(el).lineHeight))),2);assert.equal(await page.locator('.report-switch').count(),0);
  assert.equal(await page.locator('.site-context').count(),0);assert.equal(await page.locator('[data-report-type=Maintenance]').count(),0);await page.screenshot({path:output+'/reports-mobile.png',fullPage:true});
  await page.locator('[data-report-type="Near miss"]').click();assert.equal(await page.locator('.report-switch').count(),0);
  assert.equal(await page.locator('[name=title]').count(),0);assert.equal(await page.locator('[name=owner]').count(),0);
@@ -48,6 +49,16 @@ try{
  await page.getByRole('button',{name:'Profile',exact:true}).click();await page.locator('#role').selectOption('manager');await page.locator('[data-report-mode=view]').waitFor();await page.getByRole('button',{name:'Profile',exact:true}).click();await page.locator('[data-report-mode=view]').click();
  await page.getByRole('button',{name:'View report',exact:true}).click();await page.locator('[name=status]').selectOption('Closed');await page.getByLabel('Review notes',{exact:true}).fill('Reviewed and corrective action agreed with the team.');await page.getByRole('button',{name:'Save review'}).click();await page.getByText('Closed',{exact:true}).waitFor();
  await page.locator('[data-report-mode=report]').click();await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:output+'/reports-desktop.png',fullPage:true});
+ await page.setViewportSize({width:390,height:844});await page.locator('[data-nav-action=home]').click();await page.locator('[data-task=faults]').click();
+ assert.equal(await page.locator('#maintenance-photo').getAttribute('capture'),'environment');await page.getByLabel('Equipment',{exact:true}).check();await page.getByLabel('What happened?',{exact:true}).fill('Fridge door seal damaged');await page.getByLabel('No',{exact:true}).check();
+ const imageData=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=2400;canvas.height=1200;const c=canvas.getContext('2d');c.fillStyle='#00843d';c.fillRect(0,0,2400,1200);return canvas.toDataURL('image/png').split(',')[1];});
+ const file={name:'fault.png',mimeType:'image/png',buffer:Buffer.from(imageData,'base64')};
+ const chooser=page.waitForEvent('filechooser');await page.locator('#snap-photo').click();await (await chooser).setFiles(file);await page.getByText('Photo ready.',{exact:true}).waitFor();
+ assert.equal(await page.locator('#photo-preview img').evaluate(img=>img.naturalWidth),1280);await page.locator('#remove-photo').click();assert.equal(await page.locator('#photo-preview').isVisible(),false);
+ await page.locator('#maintenance-photo').setInputFiles(file);await page.getByText('Photo ready.',{exact:true}).waitFor();await page.screenshot({path:output+'/maintenance-photo-mobile.png',fullPage:true});
+ failNext=true;await page.getByRole('button',{name:'Submit report'}).click();await page.getByText(/Your draft remains here/).waitFor();assert.equal(await page.locator('#photo-preview').isVisible(),true);await page.getByRole('button',{name:'Submit report'}).click();await page.locator('[data-report-type]').first().waitFor();assert.equal(keys[2],keys[3]);assert.ok(records[0].photo);
+ await page.locator('[data-report-mode=view]').click();await page.getByRole('button',{name:'View report',exact:true}).click();await page.locator('.report-photo img').waitFor();await page.screenshot({path:output+'/saved-maintenance-photo.png',fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
  await page.getByRole('button',{name:'Profile',exact:true}).click();await page.getByRole('button',{name:'Sign out'}).click();await page.getByRole('heading',{name:'Sign in'}).waitFor();assert.equal(await page.getByText('Sample medicine',{exact:true}).count(),0);assert.deepEqual(errors,[]);
- console.log('UI smoke passed: login, mobile layout, failed-save draft preservation, identical retry key, report creation, review closure, sign-out. Identity/API mocked; deployed authentication remains a separate gate.');
+ console.log('UI smoke passed: login, mobile layout, failed-save draft preservation, identical retry key, report creation, review closure, camera chooser, photo resizing/removal/save/retry/view, sign-out. Identity/API mocked; deployed authentication remains a separate gate.');
 }catch(error){await page.screenshot({path:output+'/smoke-debug.png',fullPage:true});throw error;}finally{await browser.close();}
