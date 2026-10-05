@@ -73,3 +73,18 @@ test('mutation request guard denies cross-origin, absent origin and non-JSON wri
  assert.throws(()=>guard(new Request(url,{method:'POST',headers:{origin:'https://pharmatap.netlify.app','content-type':'text/plain'}})),denied(415));
  assert.doesNotThrow(()=>guard(new Request(url,{method:'POST',headers:{origin:'https://pharmatap.netlify.app','content-type':'application/json'}})));
 });
+test('role switching restricts privileges and cannot elevate a membership',async()=>{
+ const f=await fixture();try{
+ await f.transaction(()=>createReport(f.db,{id:'staff'},f.input,randomUUID()));
+ await f.db.query("INSERT INTO memberships(user_id,pharmacy_id,display_name,role) VALUES('admin',$1,'Admin','superintendent')",[f.site]);
+ assert.equal((await list(f.db,{id:'admin'},f.site)).reports.length,1);
+ assert.equal((await list(f.db,{id:'admin',viewRole:'staff'},f.site)).reports.length,0);
+ assert.equal((await list(f.db,{id:'admin',viewRole:'manager'},f.site)).role,'manager');
+ await assert.rejects(exportPharmacy(f.db,{id:'admin',viewRole:'staff'},f.site),denied(403));
+ const a=(await list(f.db,{id:'admin'},f.site)).reports[0];
+ await assert.rejects(f.transaction(()=>updateAction(f.db,{id:'admin',viewRole:'staff'},a.action_id,{version:1,status:'Closed',resolution:'Review should be blocked in staff view.'})),denied(403));
+ for(const viewRole of ['manager','superintendent','admin','invalid'])await assert.rejects(list(f.db,{id:'staff',viewRole},f.site),denied(403));
+ await assert.rejects(list(f.db,{id:'manager',viewRole:'superintendent'},f.site),denied(403));
+ await assert.rejects(list(f.db,{id:'admin',viewRole:'staff'},f.otherSite),denied(403));
+ }finally{await f.pg.close();}
+});

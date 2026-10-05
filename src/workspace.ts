@@ -1,11 +1,11 @@
 import { login,logout,getUser,handleAuthCallback,acceptInvite,updateUser,requestPasswordRecovery } from '@netlify/identity';
 const root=document.querySelector<HTMLElement>('#workspace')!,account=document.querySelector<HTMLElement>('#account')!;
 const escape=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
-let userId='',organisations:any[]=[],organisationId='',pharmacies:any[]=[],pharmacyId='',data:any={reports:[],reviewers:[],role:'staff'},tab='reports';
+let userId='',organisations:any[]=[],organisationId='',pharmacies:any[]=[],pharmacyId='',data:any={reports:[],reviewers:[],role:'staff'},tab='home',viewRole='',profileOpen=false;
 let retry:{key:string,body:any}|null=null;
 function message(text:string){const el=document.querySelector('#message')!;el.textContent=text;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),6000);}
 async function api(path:string,options:RequestInit={}){
- const response=await fetch('/api/workspace'+path,{credentials:'same-origin',cache:'no-store',...options});
+ const response=await fetch('/api/workspace'+path,{credentials:'same-origin',cache:'no-store',...options,headers:{...(viewRole?{'X-PharmaTap-Role':viewRole}:{}),...options.headers}});
  let result;try{result=await response.json();}catch{throw new Error('The workspace service is unavailable. Please try again.');}
  if(!response.ok){if(response.status===401){pharmacies=[];data={reports:[],reviewers:[],role:'staff'};retry=null;signIn();}throw new Error(result.error||'Unable to complete the request.');}return result;
 }
@@ -32,29 +32,48 @@ async function start(){
  const user=await getUser();if(!user){signIn();return;}userId=user.id;
  await api('/initialise',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
  const result=await api('/session');pharmacies=result.pharmacies;organisations=(result.organisations||[]).filter((o:any)=>pharmacies.some(p=>p.organisation_id===o.id));if(!organisations.length)organisations=[...new Map(pharmacies.map(p=>[p.organisation_id,{id:p.organisation_id,name:p.organisation_name,role:p.role}])).values()];
- account.innerHTML=`<span>${escape(user.name||user.email)}</span><button id="logout" class="secondary">Sign out</button>`;
- document.querySelector('#logout')!.addEventListener('click',async()=>{try{await logout();}finally{data={reports:[],reviewers:[],role:'staff'};retry=null;pharmacies=[];userId='';signIn();}});
+ account.innerHTML='<button id="profile-trigger" class="avatar" aria-label="Profile" aria-expanded="false" aria-controls="profile-panel">'+escape((user.name||'Simon').split(' ').map((n:string)=>n[0]).join('').slice(0,2))+'</button>';
  if(!pharmacies.length){root.innerHTML=`<section class="card"><h1>Access pending</h1><p>Your administrator needs to assign your pharmacy and role before you can use the workspace.</p><p class="help">Account reference: <code>${escape(userId)}</code></p></section>`;return;}
  if(!organisations.some(o=>o.id===organisationId))organisationId=organisations[0].id;
  if(!pharmacies.some(p=>p.id===pharmacyId&&p.organisation_id===organisationId))pharmacyId=pharmacies.find(p=>p.organisation_id===organisationId)!.id;
  await refresh();
 }
 async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));render();}
+const roleLabel=(role:string)=>({'staff':'Staff','manager':'Pharmacist','superintendent':'Organisation admin'}[role]||role);
 function render(){
- const site=pharmacies.find(p=>p.id===pharmacyId);const organisation=organisations.find(o=>o.id===organisationId);const accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
- const open=data.reports.filter((r:any)=>r.status!=='Closed');const overdue=open.filter((r:any)=>Date.parse(r.due_at)<Date.now());
- root.innerHTML=`<div class="row"><div><h1>${escape(site.name)}</h1><small>${escape(organisation.name)} · ${escape(site.display_name)} · ${organisation.role==='admin'?'Organisation admin':escape(data.role)}</small></div><div class="columns"><label class="pharmacy">Organisation<select id="organisation">${organisations.map(o=>`<option value="${escape(o.id)}" ${o.id===organisationId?'selected':''}>${escape(o.name)}</option>`).join('')}</select></label><label class="pharmacy">Pharmacy<select id="pharmacy">${accessibleSites.map(p=>`<option value="${escape(p.id)}" ${p.id===pharmacyId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label></div></div><div class="toolbar"><button id="reports" class="secondary" aria-pressed="${tab==='reports'}">Reports</button><button id="actions" class="secondary" aria-pressed="${tab==='actions'}">My Actions (${open.filter((r:any)=>r.owner_id===userId).length})</button><button id="new">Report</button><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div><small>${data.role==='staff'?'Showing your reports.':'Showing this pharmacy’s reports.'} Times shown in your device’s timezone (${escape(Intl.DateTimeFormat().resolvedOptions().timeZone)}).</small><section id="content"></section>`;
+ const site=pharmacies.find(p=>p.id===pharmacyId),organisation=organisations.find(o=>o.id===organisationId),accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
+ const roles=site.role==='superintendent'?['superintendent','manager','staff']:site.role==='manager'?['manager','staff']:['staff'];
+ const open=data.reports.filter((r:any)=>r.status!=='Closed'),overdue=open.filter((r:any)=>Date.parse(r.due_at)<Date.now());
+ const trigger=document.querySelector('#profile-trigger');trigger?.setAttribute('aria-expanded',String(profileOpen));
+ document.querySelector('#profile-panel')?.remove();
+ account.insertAdjacentHTML('beforeend',`<section id="profile-panel" class="profile-panel" ${profileOpen?'':'hidden'} aria-label="Profile settings"><h2>${escape(site.display_name)}</h2><label>Organisation<select id="organisation">${organisations.map(o=>`<option value="${escape(o.id)}" ${o.id===organisationId?'selected':''}>${escape(o.name)}</option>`).join('')}</select></label><label>Site<select id="pharmacy">${accessibleSites.map(p=>`<option value="${escape(p.id)}" ${p.id===pharmacyId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label><label>Role<select id="role">${roles.map(r=>`<option value="${r}" ${r===(viewRole||site.role)?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></label><button id="logout" class="secondary">Sign out</button></section>`);
+ root.innerHTML=`<div class="site-context"><span>${escape(organisation.name)} · ${escape(site.name)}</span><small>${escape(roleLabel(data.role))}</small></div><nav class="toolbar" aria-label="Workspace navigation"><button id="home" class="secondary" aria-pressed="${tab==='home'}">Home</button><button id="reports" class="secondary" aria-pressed="${tab==='reports'}">Reports</button><button id="actions" class="secondary" aria-pressed="${tab==='actions'}">My Actions (${open.filter((r:any)=>r.owner_id===userId).length})</button></nav>${tab==='home'?'':`<h1>${tab==='actions'?'My Actions':'Reports'}</h1><div class="toolbar"><button id="new">Report</button><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div>`}<section id="content"></section>`;
  const content=document.querySelector('#content')!;
  const records=tab==='actions'?data.reports.filter((r:any)=>r.owner_id===userId&&r.status!=='Closed'):data.reports;
  content.innerHTML=records.map((r:any)=>`<article class="card"><div class="row"><div><small>${escape(r.type)} · ${escape(stamp(r.created_at))}</small><h2>${escape(r.title)}</h2></div><span class="pill ${r.status!=='Closed'&&Date.parse(r.due_at)<Date.now()?'overdue':''}">${escape(r.status)}</span></div><p class="muted">Reviewer: ${escape(r.owner_name)} · Due ${escape(stamp(r.due_at))}</p><button class="secondary" data-record="${escape(r.id)}">View report</button></article>`).join('')||'<section class="card"><h2>All clear</h2><p>No records in this view.</p></section>';
- document.querySelector('#organisation')!.addEventListener('change',async e=>{organisationId=(e.target as HTMLSelectElement).value;pharmacyId=pharmacies.find(p=>p.organisation_id===organisationId)!.id;retry=null;data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening organisation…</p>';try{await refresh();}catch(e){root.innerHTML='<p>Could not open this organisation. Reload to try again.</p>';message((e as Error).message);}});
- document.querySelector('#pharmacy')!.addEventListener('change',async e=>{pharmacyId=(e.target as HTMLSelectElement).value;retry=null;data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening pharmacy…</p>';try{await refresh();}catch(e){root.innerHTML='<p>Could not open this pharmacy. Reload to try again.</p>';message((e as Error).message);}});
- for(const name of ['reports','actions'])document.querySelector('#'+name)!.addEventListener('click',()=>{tab=name;render();});
- document.querySelector('#new')!.addEventListener('click',newReport);
- document.querySelector('#refresh')!.addEventListener('click',()=>refresh().catch(e=>message(e.message)));
+ document.querySelector('#organisation')!.addEventListener('change',async e=>{organisationId=(e.target as HTMLSelectElement).value;await switchSite(pharmacies.find(p=>p.organisation_id===organisationId)!.id);});
+ document.querySelector('#pharmacy')!.addEventListener('change',async e=>{await switchSite((e.target as HTMLSelectElement).value);});
+ document.querySelector('#role')!.addEventListener('change',async e=>{viewRole=(e.target as HTMLSelectElement).value;retry=null;try{await refresh();}catch(e){message((e as Error).message);}});
+ document.querySelector('#logout')!.addEventListener('click',async()=>{try{await logout();}finally{data={reports:[],reviewers:[],role:'staff'};retry=null;pharmacies=[];userId='';viewRole='';profileOpen=false;tab='home';signIn();}});
+ for(const name of ['home','reports','actions'])document.querySelector('#'+name)!.addEventListener('click',()=>{tab=name;render();});
+ document.querySelector('#new')?.addEventListener('click',newReport);
+ document.querySelector('#refresh')?.addEventListener('click',()=>refresh().catch(e=>message(e.message)));
  document.querySelector('#export')?.addEventListener('click',async()=>{try{const result=await api('/export?pharmacyId='+pharmacyId);const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='PharmaTap-records-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(url);message(`${result.reportCount} reports exported with their audit history.`);}catch(e){message((e as Error).message);}});
+ if(tab==='home'){
+  const icons=['M12 5v14M5 12h14','M4 4h6l2 2 2-2h6v16h-6l-2 2-2-2H4zM12 6v16','M5 3h14v18H5zM8 11l2 2 5-5','M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-4 4-4-4z','M5 5h14M5 12h14M5 19h14','M3 8l9-5 9 5-9 5zM6 10v7l6 4 6-4v-7'];
+  content.innerHTML='<h1 class="sr-only">Home</h1><section class="home-tasks" aria-label="Pharmacy tasks">'+[['Report','Medication errors and near misses','report'],['SOPs','Find and read procedures','sops'],['Checks','Record daily checks','checks'],['Faults','Equipment or premises issues','faults'],['Actions','View tasks and due dates','actions'],['Training','Courses and SOP updates','training']].map(([title,description,target],i)=>`<button class="home-task" data-task="${target}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[i]}"/></svg><strong>${title}</strong><span>${description}</span>${['sops','checks','training'].includes(target)?'<small>Coming soon</small>':''}</button>`).join('')+'</section>';
+  document.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click',()=>{const task=(el as HTMLElement).dataset.task!;if(['sops','checks','training'].includes(task)){message('This module is awaiting implementation.');return;}tab=task==='actions'?'actions':'reports';profileOpen=false;render();if(task==='report'||task==='faults'){newReport();if(task==='faults'){const type=document.querySelector<HTMLSelectElement>('[name=type]');if(type)type.value='Maintenance';}}}));
+ }
  document.querySelectorAll('[data-record]').forEach(el=>el.addEventListener('click',()=>viewReport((el as HTMLElement).dataset.record!)));
 }
+async function switchSite(id:string){
+ pharmacyId=id;const site=pharmacies.find(p=>p.id===id);organisationId=site.organisation_id;
+ if(viewRole&&(['staff','manager','superintendent'].indexOf(viewRole)>['staff','manager','superintendent'].indexOf(site.role)))viewRole='';
+ retry=null;data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening site…</p>';
+ try{await refresh();}catch(e){root.innerHTML='<p>Could not open this site. Reload to try again.</p>';message((e as Error).message);}
+}
+document.addEventListener('click',e=>{const target=e.target as Element;if(target.closest('#profile-trigger')){profileOpen=!profileOpen;render();}else if(profileOpen&&!target.closest('#account')){profileOpen=false;render();}if(target.closest('.brand')&&pharmacies.length){e.preventDefault();tab='home';profileOpen=false;render();}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&profileOpen){profileOpen=false;render();document.querySelector<HTMLButtonElement>('#profile-trigger')?.focus();}});
 function newReport(){
  if(!data.reviewers.length){message('An active pharmacy reviewer must be assigned before reports can be submitted.');return;}
  const now=local(new Date()),tomorrow=local(new Date(Date.now()+86400000));

@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-export type Actor = { id: string };
+export type Actor = { id: string; viewRole?: string };
 export type DB = { query: (sql: string, params?: any[]) => Promise<{rows: any[]}> };
 export class Fault extends Error { constructor(public status: number, message: string) { super(message); } }
 const fail = (status:number, message:string): never => { throw new Fault(status,message); };
@@ -12,7 +12,9 @@ function text(value:unknown,min:number,max:number,label:string):string {
 function date(value:unknown,label:string):string { if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value)||!Number.isFinite(Date.parse(value)))fail(400,`Invalid ${label}.`); return new Date(value as string).toISOString(); }
 export async function membership(db:DB,actor:Actor,pharmacy:string) {
  const {rows}=await db.query('SELECT * FROM memberships WHERE user_id=$1 AND pharmacy_id=$2 AND active=true',[actor.id,uuid(pharmacy)]);
- return rows[0]||fail(403,'You do not have access to this pharmacy.');
+ const m=rows[0]||fail(403,'You do not have access to this pharmacy.');
+ if(actor.viewRole){const roles=['staff','manager','superintendent'];if(!roles.includes(actor.viewRole)||roles.indexOf(actor.viewRole)>roles.indexOf(m.role))fail(403,'This role is not available for your account at this pharmacy.');return {...m,role:actor.viewRole};}
+ return m;
 }
 export async function session(db:DB,actor:Actor){
  const {rows}=await db.query('SELECT p.id,p.name,p.timezone,p.organisation_id,o.name AS organisation_name,o.is_demo,m.role,m.display_name FROM memberships m JOIN pharmacies p ON p.id=m.pharmacy_id JOIN organisations o ON o.id=p.organisation_id WHERE m.user_id=$1 AND m.active=true ORDER BY o.is_demo,o.name,p.name',[actor.id]);

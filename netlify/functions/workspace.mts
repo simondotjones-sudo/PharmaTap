@@ -10,7 +10,7 @@ export default async (req:Request) => {
  let client;
  try {
   guard(req);const user=await getUser();if(!user)throw new Fault(401,'Sign in to continue.');
-  const actor={id:user.id};client=await getDatabase().pool.connect();
+  const actor={id:user.id,viewRole:req.headers.get('x-pharmatap-role')||undefined};client=await getDatabase().pool.connect();
   await client.query(req.method==='GET' ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
   await client.query("SET LOCAL statement_timeout='10s'");
   const url=new URL(req.url),path=url.pathname.slice('/api/workspace'.length);

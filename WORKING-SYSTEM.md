@@ -47,3 +47,7 @@ Tests run in PGlite against PostgreSQL SQL. The setup operation queries actual d
 Approved SOP import, pharmacist approval, versions and staff acknowledgements come next, followed by scheduled checks/temperature exceptions, recall tracking and escalation delivery, then source-grounded Ask PharmaTap. These are not yet working modules in the authenticated workspace.
 
 Client-approved report fields, role matrix, hosting/retention arrangements, monitoring/support and backup/restore validation are still required before real sensitive pharmacy records are accepted. Keep patient identifiers in designated clinical systems. This release does not replace dispensing software, statutory controlled-drug records or regulatory reporting.
+
+## Home and profile
+
+Signed-in users land on the six-tile Home screen. Profile contains organisation, site and role selectors plus sign-out. Organisation administrators can select admin, pharmacist or staff views; other accounts can select their assigned role or a lower role. Every server record operation verifies the selected role against the active site membership. SOPs, Checks and Training are marked Coming soon; reports, maintenance reports and actions use the working database.

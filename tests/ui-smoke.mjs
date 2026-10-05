@@ -29,14 +29,15 @@ await page.route('https://pharmatap.test/**',async route=>{
 try{
  await page.goto('https://pharmatap.test/');
  await page.getByLabel('Email',{exact:true}).fill('manager@example.test');await page.getByLabel('Password',{exact:true}).fill('test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
- await page.getByRole('heading',{name:'Test pharmacy'}).waitFor();
- await page.getByRole('button',{name:'Report',exact:true}).click();await page.getByLabel('Title',{exact:true}).fill('Shelf selection intercepted');await page.getByLabel('What happened?',{exact:true}).fill('The wrong item was identified before completing the check.');
+ await page.getByRole('button',{name:'Profile',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Profile',exact:true}).click();await page.getByLabel('Site',{exact:true}).waitFor();await page.getByLabel('Role',{exact:true}).selectOption('staff');await page.getByRole('button',{name:'Profile',exact:true}).click();
+ await page.locator('[data-task=report]').click();await page.getByLabel('Title',{exact:true}).fill('Shelf selection intercepted');await page.getByLabel('What happened?',{exact:true}).fill('The wrong item was identified before completing the check.');
  await page.getByRole('button',{name:'Submit report'}).click();await page.getByText(/Your draft remains here/).waitFor();assert.equal(await page.getByLabel('Title',{exact:true}).inputValue(),'Shelf selection intercepted');
  await page.getByRole('button',{name:'Submit report'}).click();await page.getByRole('button',{name:'View report'}).waitFor();assert.equal(keys.length,2);assert.equal(keys[0],keys[1]);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
  await page.screenshot({path:'/workspace/scratch/f501d0b0a93a/workspace-mobile.png',fullPage:true});
  await page.getByRole('button',{name:'View report'}).click();await page.getByLabel('Status',{exact:true}).selectOption('Closed');await page.getByLabel('Review notes',{exact:true}).fill('Reviewed and corrective action agreed with the team.');await page.getByRole('button',{name:'Save review'}).click();await page.getByText('Closed',{exact:true}).waitFor();
  await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'/workspace/scratch/f501d0b0a93a/workspace-desktop.png',fullPage:true});
- await page.getByRole('button',{name:'Sign out'}).click();await page.getByRole('heading',{name:'Sign in'}).waitFor();assert.equal(await page.getByText('Shelf selection intercepted',{exact:true}).count(),0);assert.deepEqual(errors,[]);
+ await page.getByRole('button',{name:'Profile',exact:true}).click();await page.getByRole('button',{name:'Sign out'}).click();await page.getByRole('heading',{name:'Sign in'}).waitFor();assert.equal(await page.getByText('Shelf selection intercepted',{exact:true}).count(),0);assert.deepEqual(errors,[]);
  console.log('UI smoke passed: login, mobile layout, failed-save draft preservation, identical retry key, report creation, review closure, sign-out. Identity/API mocked; deployed authentication remains a separate gate.');
 }finally{await browser.close();}
