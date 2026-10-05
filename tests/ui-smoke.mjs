@@ -33,9 +33,9 @@ try{
  await page.locator('.home-task').first().waitFor();
  await page.getByRole('button',{name:'Profile',exact:true}).click();await page.locator('#pharmacy').waitFor();await page.locator('#role').selectOption('staff');await page.getByRole('button',{name:'Profile',exact:true}).click();
  await page.locator('[data-task=report]').click();
- assert.equal(await page.locator('[data-report-type]').count(),11);assert.equal(await page.locator('.report-switch').count(),0);
- await page.screenshot({path:output+'/reports-mobile.png',fullPage:true});
- await page.locator('[data-report-type="Near miss"]').click();
+ assert.equal(await page.locator('[data-report-type]').count(),10);assert.equal(await page.locator('.report-switch').count(),0);
+ assert.equal(await page.locator('.site-context').count(),0);assert.equal(await page.locator('[data-report-type=Maintenance]').count(),0);await page.screenshot({path:output+'/reports-mobile.png',fullPage:true});
+ await page.locator('[data-report-type="Near miss"]').click();assert.equal(await page.locator('.report-switch').count(),0);
  assert.equal(await page.locator('[name=title]').count(),0);assert.equal(await page.locator('[name=owner]').count(),0);
  await page.getByLabel('Medicine',{exact:true}).check();await page.getByLabel('Medicine / product',{exact:true}).fill('Sample medicine');
  await page.getByRole('button',{name:'Submit report'}).click();await page.getByText(/Your draft remains here/).waitFor();assert.equal(await page.getByLabel('Medicine / product',{exact:true}).inputValue(),'Sample medicine');
