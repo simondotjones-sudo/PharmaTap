@@ -46,12 +46,12 @@ const row=(title,sub,ic,action,right='')=>`<button class="row row-button" data-a
 function checkRows(){return CHECK_TEMPLATES.map(t=>{const completed=state.checks.find(c=>c.site===state.site&&c.template===t.id&&c.date===DEMO_DATE);return `<button class="row row-button" data-action="check:${t.id}"><span class="check-circle ${completed?'done':''}">${icon(completed?'tick':t.icon)}</span><span class="row-content"><h3>${t.title}</h3><p>${completed?esc(completed.result):t.subtitle+' · '+t.time}</p></span>${completed?badge('Recorded',completed.result==='Needs review'?'amber':''):icon('chevron')}</button>`;}).join('');}
 function today(){
  const tasks=[
-  ['report','Report',['Near misses,','errors and','concerns.'],'data-action="new-report"'],
-  ['book','SOPs',['Find and read','pharmacy','procedures.'],'data-nav="sops"'],
-  ['check','Checks',['Record daily','temperatures','and checks.'],'data-nav="checks"'],
-  ['tool','Faults',['Report issues','with equipment','or premises.'],'data-action="new-maintenance"'],
-  ['action','Actions',['See tasks,','due dates and','follow-ups.'],'data-nav="actions"'],
-  ['learn','Training',['Complete short','courses and','SOP updates.'],'data-nav="learning"']
+  ['report','Report',['Errors and','near misses.'],'data-action="new-report"'],
+  ['book','SOPs',['Find and read','procedures.'],'data-nav="sops"'],
+  ['check','Checks',['Record daily','checks.'],'data-nav="checks"'],
+  ['tool','Faults',['Equipment or','premises issues.'],'data-action="new-maintenance"'],
+  ['action','Actions',['View tasks and','due dates.'],'data-nav="actions"'],
+  ['learn','Training',['Courses and','SOP updates.'],'data-nav="learning"']
  ];
  const recallNeedsResponse=state.site==='all'
   ? activeSites().some(s=>!state.recall.responses.some(r=>r.site===s.id&&r.status==='Confirmed'))
