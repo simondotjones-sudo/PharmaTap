@@ -40,3 +40,14 @@
  #toast{bottom:calc(94px + env(safe-area-inset-bottom,0px))}
 }
 @media print{.mobile-navigation{display:none!important}}
+
+@media(max-width:760px){
+ .mobile-navigation{left:50%;transform:translateX(-50%);width:300px;max-width:calc(100vw - 32px);padding:5px;border-radius:999px;background:#ffffffed;backdrop-filter:blur(18px);box-shadow:0 8px 32px #183b3226;z-index:45}
+ .mobile-navigation button{position:relative;z-index:1;min-height:54px;border-radius:999px;transition:color .25s ease,transform .2s ease}
+ .mobile-navigation button:hover,.mobile-navigation button[aria-expanded=true]{background:transparent}
+ .mobile-navigation button.selected{color:var(--green-ink)}
+ .mobile-navigation button:active{transform:scale(.94)}
+ .nav-highlight{position:absolute;top:5px;bottom:5px;left:5px;width:calc((100% - 10px)/4);border-radius:999px;background:var(--light);pointer-events:none}
+ .ask-fab{display:none}
+ .ask-panel{bottom:calc(100px + env(safe-area-inset-bottom,0px));max-height:calc(100dvh - 120px - env(safe-area-inset-bottom,0px))}
+}
