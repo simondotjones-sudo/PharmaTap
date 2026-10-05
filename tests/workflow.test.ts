@@ -7,7 +7,7 @@ import { session,list,createReport,updateAction,history,exportPharmacy,Fault } f
 import { guard } from '../netlify/functions/workspace.mts';
 const migration=await readFile('netlify/database/migrations/001_working-foundation/migration.sql','utf8');
 async function fixture(){
- const pg=new PGlite();await pg.exec(migration);await pg.exec(await readFile('netlify/database/migrations/002_organisation-catalogue/migration.sql','utf8'));await pg.exec(await readFile('netlify/database/migrations/003_initial-administrator/migration.sql','utf8'));const db={query:async(sql:string,params:any[]=[])=>{const result=await pg.query(sql,params);return {rows:result.rows as any[]};}};
+ const pg=new PGlite();await pg.exec(migration);await pg.exec(await readFile('netlify/database/migrations/002_organisation-catalogue/migration.sql','utf8'));await pg.exec(await readFile('netlify/database/migrations/003_initial-administrator/migration.sql','utf8'));await pg.exec(await readFile('netlify/database/migrations/005_report-types/migration.sql','utf8'));const db={query:async(sql:string,params:any[]=[])=>{const result=await pg.query(sql,params);return {rows:result.rows as any[]};}};
  const org=randomUUID(),otherOrg=randomUUID(),site=randomUUID(),otherSite=randomUUID();
  await db.query('INSERT INTO organisations VALUES($1,$2),($3,$4)',[org,'Group',otherOrg,'Other group']);
  await db.query('INSERT INTO pharmacies(id,organisation_id,name) VALUES($1,$2,$3),($4,$5,$6)',[site,org,'First pharmacy',otherSite,otherOrg,'Other pharmacy']);
@@ -86,5 +86,19 @@ test('role switching restricts privileges and cannot elevate a membership',async
  for(const viewRole of ['manager','superintendent','admin','invalid'])await assert.rejects(list(f.db,{id:'staff',viewRole},f.site),denied(403));
  await assert.rejects(list(f.db,{id:'manager',viewRole:'superintendent'},f.site),denied(403));
  await assert.rejects(list(f.db,{id:'admin',viewRole:'staff'},f.otherSite),denied(403));
+ }finally{await f.pg.close();}
+});
+
+test('all quick-report types save their specific answers, action and audit history',async()=>{
+ const {reportTypes}=await import('../src/report-types');const f=await fixture();try{
+ for(const definition of reportTypes){
+  const answers=Object.fromEntries(definition.fields.map(field=>[field.id,field.options?.[0]||'Sample product or incident']));
+  const saved=await f.transaction(()=>createReport(f.db,{id:'staff'},{...f.input,type:definition.type,answers,note:'Extra context for review.'},randomUUID()));
+  const row=(await list(f.db,{id:'staff'},f.site)).reports.find(r=>r.id===saved.id);
+  assert.equal(row.type,definition.type);assert.match(row.detail,/Extra context for review/);assert.equal(row.owner_id,'manager');assert.equal((await history(f.db,{id:'staff'},saved.id)).length,1);
+ }
+ await assert.rejects(f.transaction(()=>createReport(f.db,{id:'staff'},{...f.input,answers:{issue:'Invalid choice',medicine:'Sample'},note:''},randomUUID())),denied(400));
+ await assert.rejects(f.transaction(()=>createReport(f.db,{id:'staff'},{...f.input,answers:{issue:'Medicine'},note:''},randomUUID())),denied(400));
+ assert.equal((await list(f.db,{id:'manager'},f.site)).reports.length,11);
  }finally{await f.pg.close();}
 });

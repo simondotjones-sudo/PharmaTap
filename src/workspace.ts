@@ -1,9 +1,11 @@
 import { login,logout,getUser,handleAuthCallback,acceptInvite,updateUser,requestPasswordRecovery } from '@netlify/identity';
+import {reportTypes,type ReportType} from './report-types';
 const root=document.querySelector<HTMLElement>('#workspace')!,account=document.querySelector<HTMLElement>('#account')!;
 const escape=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 let userId='',organisations:any[]=[],organisationId='',pharmacies:any[]=[],pharmacyId='',data:any={reports:[],reviewers:[],role:'staff'},tab='home',viewRole='',profileOpen=false;
+let reportMode='report',selectedReportType='Near miss';
 let menuOpen=false,askOpen=false,screen='list',recordId='',navChoice='home';
-const pageHistory:{tab:string,screen:string,recordId:string}[]=[];
+const pageHistory:{tab:string,screen:string,recordId:string,reportMode:string,reportType:string}[]=[];
 let askMessages:{question:string,answer:string}[]=[];
 let retry:{key:string,body:any}|null=null;
 function message(text:string){const el=document.querySelector('#message')!;el.textContent=text;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),6000);}
@@ -42,7 +44,7 @@ async function start(){
  await refresh();
 }
 async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));screen='list';render();}
-const APP_VERSION='1.05.10.26.3';
+const APP_VERSION='1.05.10.26.4';
 const roleLabel=(role:string)=>({'staff':'Staff','manager':'Pharmacist','superintendent':'Organisation admin'}[role]||role);
 function render(){
  const site=pharmacies.find(p=>p.id===pharmacyId),organisation=organisations.find(o=>o.id===organisationId),accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
@@ -54,7 +56,7 @@ function render(){
  const trigger=document.querySelector('#profile-trigger');trigger?.setAttribute('aria-expanded',String(profileOpen));
  document.querySelector('#profile-panel')?.remove();
  account.insertAdjacentHTML('beforeend',`<section id="profile-panel" class="profile-panel" ${profileOpen?'':'hidden'} aria-label="Profile settings"><h2>${escape(site.display_name)}</h2><label>Organisation<select id="organisation">${organisations.map(o=>`<option value="${escape(o.id)}" ${o.id===organisationId?'selected':''}>${escape(o.name)}</option>`).join('')}</select></label><label>Site<select id="pharmacy">${accessibleSites.map(p=>`<option value="${escape(p.id)}" ${p.id===pharmacyId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label><label>Role<select id="role">${roles.map(r=>`<option value="${r}" ${r===(viewRole||site.role)?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></label><button id="logout" class="secondary">Sign out</button><small class="profile-version">PharmaTap Version ${APP_VERSION}</small></section>`);
- root.innerHTML=`${tab==='home'?'':`<div class="site-context"><span>${escape(organisation.name)} · ${escape(site.name)}</span><small>${escape(roleLabel(data.role))}</small></div>`}${!['reports','actions'].includes(tab)?'':`<h1>${tab==='actions'?'My Actions':tab==='reports'?'Reports':'Workspace'}</h1><div class="toolbar"><button id="new">Report</button><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div>`}<section id="content"></section>`;
+ root.innerHTML=`${tab==='home'?'':`<div class="site-context"><span>${escape(organisation.name)} · ${escape(site.name)}</span><small>${escape(roleLabel(data.role))}</small></div>`}${!['reports','actions'].includes(tab)?'':`<h1>${tab==='actions'?'My Actions':'Reports'}</h1>${tab==='reports'&&data.role!=='staff'?`<div class="report-switch" role="group" aria-label="Reports view"><button data-report-mode="report" aria-pressed="${reportMode==='report'}">Report</button><button data-report-mode="view" aria-pressed="${reportMode==='view'}">View reports</button></div>`:''}${tab==='actions'||(reportMode==='view'&&data.role!=='staff')?`<div class="toolbar"><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div>`:''}`}<section id="content"></section>`;
  const content=document.querySelector('#content')!;
  const records=tab==='actions'?data.reports.filter((r:any)=>r.owner_id===userId&&r.status!=='Closed'):data.reports;
  content.innerHTML=records.map((r:any)=>`<article class="card"><div class="row"><div><small>${escape(r.type)} · ${escape(stamp(r.created_at))}</small><h2>${escape(r.title)}</h2></div><span class="pill ${r.status!=='Closed'&&Date.parse(r.due_at)<Date.now()?'overdue':''}">${escape(r.status)}</span></div><p class="muted">Reviewer: ${escape(r.owner_name)} · Due ${escape(stamp(r.due_at))}</p><button class="secondary" data-record="${escape(r.id)}">View report</button></article>`).join('')||'<section class="card"><h2>All clear</h2><p>No records in this view.</p></section>';
@@ -62,36 +64,37 @@ function render(){
  document.querySelector('#pharmacy')!.addEventListener('change',async e=>{await switchSite((e.target as HTMLSelectElement).value);});
  document.querySelector('#role')!.addEventListener('change',async e=>{viewRole=(e.target as HTMLSelectElement).value;retry=null;try{await refresh();}catch(e){message((e as Error).message);}});
  document.querySelector('#logout')!.addEventListener('click',async()=>{try{await logout();}finally{data={reports:[],reviewers:[],role:'staff'};retry=null;pharmacies=[];userId='';viewRole='';profileOpen=false;tab='home';signIn();}});
- document.querySelector('#new')?.addEventListener('click',()=>newReport());
+ document.querySelectorAll<HTMLElement>('[data-report-mode]').forEach(el=>el.addEventListener('click',()=>{reportMode=el.dataset.reportMode!;screen='list';render();}));
  document.querySelector('#refresh')?.addEventListener('click',()=>refresh().catch(e=>message(e.message)));
  document.querySelector('#export')?.addEventListener('click',async()=>{try{const result=await api('/export?pharmacyId='+pharmacyId);const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='PharmaTap-records-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(url);message(`${result.reportCount} reports exported with their audit history.`);}catch(e){message((e as Error).message);}});
  if(tab==='home'){
   const icons=['M12 5v14M5 12h14','M4 4h6l2 2 2-2h6v16h-6l-2 2-2-2H4zM12 6v16','M5 3h14v18H5zM8 11l2 2 5-5','M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-4 4-4-4z','M5 5h14M5 12h14M5 19h14','M3 8l9-5 9 5-9 5zM6 10v7l6 4 6-4v-7'];
   content.innerHTML='<h1 class="sr-only">Home</h1><section class="home-tasks" aria-label="Pharmacy tasks">'+[['Report','Medication errors|and near misses','report'],['SOPs','Find and read|procedures','sops'],['Checks','Record daily|pharmacy checks','checks'],['Faults','Equipment or|premises issues','faults'],['Actions','View tasks and|due dates','actions'],['Training','Courses and|SOP updates','training']].map(([title,description,target],i)=>`<button class="home-task" data-task="${target}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[i]}"/></svg><strong>${title}</strong><span>${description.split('|').map(escape).join('<br>')}</span></button>`).join('')+'</section>';
-  document.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click',()=>{const task=(el as HTMLElement).dataset.task!;if(['sops','checks','training'].includes(task)){message('This module is awaiting implementation.');return;}navigate(task==='actions'?'actions':'reports');if(task==='report'||task==='faults'){newReport();if(task==='faults'){const type=document.querySelector<HTMLSelectElement>('[name=type]');if(type)type.value='Maintenance';}}}));
+  document.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click',()=>{const task=(el as HTMLElement).dataset.task!;if(['sops','checks','training'].includes(task)){message('This module is awaiting implementation.');return;}navigate(task==='actions'?'actions':'reports');if(task==='faults')newReport(true,'Maintenance');}));
  }
- if(!['home','reports','actions'].includes(tab)){const titles:Record<string,string>={sops:'SOP Library',checks:'Checks',maintenance:'Maintenance',learning:'Learning',recalls:'Recalls',inspections:'Inspections'};content.innerHTML=tab==='maintenance'?'<section class="card"><h2>Maintenance</h2><p>Record equipment or premises issues and assign a reviewer.</p><button id="maintenance-report">Report a fault</button></section>':`<section class="card"><h2>${titles[tab]}</h2><p>This module is awaiting implementation.</p></section>`;document.querySelector('#maintenance-report')?.addEventListener('click',()=>{navigate('reports');newReport();const type=document.querySelector<HTMLSelectElement>('[name=type]');if(type)type.value='Maintenance';});}
+ if(!['home','reports','actions'].includes(tab)){const titles:Record<string,string>={sops:'SOP Library',checks:'Checks',maintenance:'Maintenance',learning:'Learning',recalls:'Recalls',inspections:'Inspections'};content.innerHTML=tab==='maintenance'?'<section class="card"><h2>Maintenance</h2><p>Record equipment or premises issues and assign a reviewer.</p><button id="maintenance-report">Report a fault</button></section>':`<section class="card"><h2>${titles[tab]}</h2><p>This module is awaiting implementation.</p></section>`;document.querySelector('#maintenance-report')?.addEventListener('click',()=>{navigate('reports');newReport(true,'Maintenance');});}
+ if(tab==='reports'&&(reportMode==='report'||data.role==='staff'))reportTiles();
  renderNavigation();
  document.querySelectorAll('[data-record]').forEach(el=>el.addEventListener('click',()=>viewReport((el as HTMLElement).dataset.record!)));
 }
 async function switchSite(id:string){
  pharmacyId=id;const site=pharmacies.find(p=>p.id===id);organisationId=site.organisation_id;
  if(viewRole&&(['staff','manager','superintendent'].indexOf(viewRole)>['staff','manager','superintendent'].indexOf(site.role)))viewRole='';
- retry=null;pageHistory.length=0;askMessages=[];menuOpen=false;askOpen=false;screen='list';closeProfile();document.querySelector('#navigation-root')?.remove();document.querySelector('#overlay-root')?.remove();data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening site…</p>';
+ retry=null;pageHistory.length=0;askMessages=[];menuOpen=false;askOpen=false;screen='list';reportMode='report';closeProfile();document.querySelector('#navigation-root')?.remove();document.querySelector('#overlay-root')?.remove();data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening site…</p>';
  try{await refresh();}catch(e){root.innerHTML='<p>Could not open this site. Reload to try again.</p>';message((e as Error).message);}
 }
-const paths:Record<string,string>={back:'M19 12H5 M10 7l-5 5 5 5',home:'M3 10l9-7 9 7v10H3z M9 20v-7h6v7',menu:'M4 6h16 M4 12h16 M4 18h16',spark:'M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3z',bell:'M5 17h14l-2-3V8a5 5 0 0 0-10 0v6z M10 21h4',close:'M6 6l12 12 M18 6L6 18'};
+const paths:Record<string,string>={back:'M19 12H5 M10 7l-5 5 5 5',home:'M3 10l9-7 9 7v10H3z M9 20v-7h6v7',menu:'M4 6h16 M4 12h16 M4 18h16',spark:'M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3z',bell:'M5 17h14l-2-3V8a5 5 0 0 0-10 0v6z M10 21h4',close:'M6 6l12 12 M18 6L6 18',prescription:'M8 4H5v17h14V4h-3 M8 2h8v5H8z M8 11h8 M8 15h5',medicine:'M8 3a5 5 0 0 0-5 5v8a5 5 0 0 0 10 0V8a5 5 0 0 0-5-5z M3 12h10 M17 8h4 M17 12h4 M17 16h4',shield:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z M8 12l3 3 5-6',refusal:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M6 6l12 12',warning:'M12 3L2 21h20z M12 9v5 M12 17v1',injury:'M9 3h6v6h6v6h-6v6H9v-6H3V9h6z',wrench:'M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-4 4-4-4z',security:'M6 10V8a6 6 0 0 1 12 0v2 M4 10h16v11H4z M12 14v3',complaint:'M3 4h18v13H8l-5 4z M7 8h10 M7 12h6',quality:'M5 3h14v18H5z M8 8h8 M12 12v3 M12 17v1',other:'M5 12h1 M11 12h1 M17 12h1'};
 function icon(name:string){return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"/></svg>`;}
-function remember(){pageHistory.push({tab,screen,recordId});}
+function remember(){pageHistory.push({tab,screen,recordId,reportMode,reportType:selectedReportType});}
 function closeProfile(){profileOpen=false;document.querySelector('#profile-panel')?.setAttribute('hidden','');document.querySelector('#profile-trigger')?.setAttribute('aria-expanded','false');}
 function navigate(to:string){
- if(to!==tab||screen!=='list')remember();tab=to;screen='list';menuOpen=false;askOpen=false;closeProfile();navChoice=to==='home'?'home':'menu';render();window.scrollTo({top:0,behavior:'instant'});
+ if(to!==tab||screen!=='list')remember();tab=to;reportMode='report';screen='list';menuOpen=false;askOpen=false;closeProfile();navChoice=to==='home'?'home':'menu';render();window.scrollTo({top:0,behavior:'instant'});
 }
 function goBack(){
  if(askOpen||menuOpen){askOpen=false;menuOpen=false;renderNavigation();return;}
  const previous=pageHistory.pop();if(!previous)return;
- tab=previous.tab;recordId=previous.recordId;screen='list';navChoice='back';closeProfile();render();
- if(previous.screen==='report')newReport(false);else if(previous.screen==='detail')void viewReport(recordId,false);
+ tab=previous.tab;recordId=previous.recordId;reportMode=previous.reportMode;selectedReportType=previous.reportType;screen='list';navChoice='back';closeProfile();render();
+ if(previous.screen==='report')newReport(false,previous.reportType);else if(previous.screen==='detail')void viewReport(recordId,false);
 }
 function renderNavigation(){
  let nav=document.querySelector('#navigation-root');if(!nav){nav=document.createElement('div');nav.id='navigation-root';document.body.append(nav);}
@@ -114,24 +117,39 @@ document.addEventListener('click',e=>{
  if(target.closest('.brand')&&pharmacies.length){e.preventDefault();navigate('home');return;}
  const action=target.closest<HTMLElement>('[data-nav-action]')?.dataset.navAction;
  if(action){if(action==='back')goBack();else if(action==='home')navigate('home');else{closeProfile();menuOpen=action==='menu'?!menuOpen:false;askOpen=action==='ask'?!askOpen:false;renderNavigation();if(askOpen)document.querySelector<HTMLTextAreaElement>('#ask-input')?.focus();else if(menuOpen)document.querySelector<HTMLButtonElement>('#navigation-drawer button')?.focus();}return;}
- const page=target.closest<HTMLElement>('[data-page]')?.dataset.page;if(page){navigate(page);return;}
+ const page=target.closest<HTMLElement>('[data-page]')?.dataset.page;if(page){navigate(page);if(target.textContent==='View reports'&&data.role!=='staff'){reportMode='view';render();}return;}
  const question=target.closest<HTMLElement>('[data-ask]')?.dataset.ask;if(question){answerQuestion(question);return;}
  if(target.closest('[data-assistant-report]')){navigate('reports');newReport();}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Tab'&&(menuOpen||askOpen)){const panel=document.querySelector(askOpen?'#ask-panel':'#navigation-drawer'),items=panel?.querySelectorAll<HTMLElement>('button,textarea,select,input,a[href]');if(items?.length){const first=items[0],last=items[items.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}}if(e.key==='Escape'){if(profileOpen){closeProfile();document.querySelector<HTMLButtonElement>('#profile-trigger')?.focus();}else if(menuOpen||askOpen){const action=askOpen?'ask':'menu';menuOpen=false;askOpen=false;renderNavigation();document.querySelector<HTMLButtonElement>(`[data-nav-action=${action}]`)?.focus();}}});
-function newReport(pushHistory=true){
+function reportTiles(){
+ document.querySelector('#content')!.innerHTML=`<section class="report-tiles" aria-label="Choose a report type">${reportTypes.map((t,i)=>`<button class="report-tile" data-report-type="${escape(t.type)}"><span class="report-tile-icon" aria-hidden="true">${icon(['prescription','medicine','shield','refusal','warning','injury','wrench','security','complaint','quality','other'][i])}</span><strong>${escape(t.label)}</strong><span>${escape(t.subtitle)}</span></button>`).join('')}</section>`;
+ document.querySelectorAll<HTMLElement>('[data-report-type]').forEach(el=>el.addEventListener('click',()=>newReport(true,el.dataset.reportType!)));
+}
+function reportField(field:ReportType['fields'][number]){
+ if(field.options)return `<fieldset class="quick-choice"><legend>${escape(field.label)}</legend><div>${field.options.map(option=>`<label><input type="radio" name="${field.id}" value="${escape(option)}" required><span>${escape(option)}</span></label>`).join('')}</div></fieldset>`;
+ return `<label>${escape(field.label)}<input name="${field.id}" maxlength="200" required autocomplete="off"></label>`;
+}
+function newReport(pushHistory=true,type='Near miss'){
  if(!data.reviewers.length){message('An active pharmacy reviewer must be assigned before reports can be submitted.');return;}
- if(pushHistory)remember();screen='report';renderNavigation();
- const now=local(new Date()),tomorrow=local(new Date(Date.now()+86400000));
- document.querySelector('#content')!.innerHTML=`<section class="card"><h2>Report</h2><p class="help">Record the operational issue. Keep patient names, prescription identifiers and other patient details in your designated clinical system.</p><form id="report-form"><div class="columns"><label>Type<select name="type">${['Near miss','Medication error','Complaint','Safety concern','Maintenance'].map(t=>`<option>${t}</option>`).join('')}</select></label><label>Occurred<input type="datetime-local" name="occurred" value="${now}" required></label></div><label>Title<input name="title" minlength="3" maxlength="160" required></label><label>What happened?<textarea name="detail" minlength="10" maxlength="4000" required></textarea></label><div class="columns"><label>Reviewer<select name="owner">${data.reviewers.map((r:any)=>`<option value="${escape(r.user_id)}">${escape(r.display_name)}</option>`).join('')}</select></label><label>Review deadline<input type="datetime-local" name="due" value="${tomorrow}" required></label></div><p id="save-status" role="status"></p><button id="submit-report">Submit report</button> <button class="secondary" type="button" id="cancel">Cancel</button></form></section>`;
- document.querySelector('#cancel')!.addEventListener('click',()=>{retry=null;screen='list';render();});
- document.querySelector('#report-form')!.addEventListener('submit',async e=>{
-  e.preventDefault();const form=e.target as HTMLFormElement,fields=new FormData(form),button=document.querySelector<HTMLButtonElement>('#submit-report')!,status=document.querySelector('#save-status')!;
-  const body={pharmacyId,type:fields.get('type'),title:fields.get('title'),detail:fields.get('detail'),occurredAt:new Date(String(fields.get('occurred'))).toISOString(),dueAt:new Date(String(fields.get('due'))).toISOString(),ownerId:fields.get('owner')};
+ const definition=reportTypes.find(t=>t.type===type);if(!definition)return;
+ if(pushHistory)remember();selectedReportType=type;screen='report';reportMode='report';renderNavigation();
+ const occurred=local(new Date()),due=new Date(Date.now()+86400000).toISOString(),owner=data.reviewers[0].user_id;
+ document.querySelector('#content')!.innerHTML=`<section class="card quick-report"><div class="row"><h2>${escape(definition.label)}</h2><button type="button" class="secondary" id="change-report">Change type</button></div><form id="report-form">${definition.fields.map(reportField).join('')}<p id="urgent-report" class="urgent-report" role="alert" hidden>Alert the pharmacist immediately. Submitting this report does not contact them or emergency services.</p><details class="report-more"><summary>Add more detail</summary><label><span id="notes-label">Notes (optional)</span><textarea name="note" maxlength="2000" rows="3" placeholder="Keep patient names and identifiers in your clinical system."></textarea></label><button type="button" class="secondary" id="dictate" hidden>Dictate note</button><p id="dictation-status" role="status"></p><label>Occurred<input type="datetime-local" name="occurred" value="${occurred}" required></label></details><p class="report-routing">Review assigned to ${escape(data.reviewers[0].display_name)}.</p><p id="save-status" role="status"></p><button id="submit-report">Submit report</button></form></section>`;
+ document.querySelector('#change-report')!.addEventListener('click',()=>{retry=null;screen='list';render();});
+ const form=document.querySelector<HTMLFormElement>('#report-form')!;
+ form.addEventListener('change',()=>{const values=new FormData(form),urgent=values.get('harm');document.querySelector('#urgent-report')!.toggleAttribute('hidden',!urgent||urgent==='No');const other=definition.fields.some(f=>values.get(f.id)==='Other'),note=form.querySelector<HTMLTextAreaElement>('[name=note]')!;note.required=other;document.querySelector('#notes-label')!.textContent=other?'Brief detail':'Notes (optional)';if(other)form.querySelector<HTMLDetailsElement>('details')!.open=true;});
+ const Recognition=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;
+ if(Recognition){const button=document.querySelector<HTMLButtonElement>('#dictate')!,status=document.querySelector('#dictation-status')!;button.hidden=false;button.addEventListener('click',()=>{const recognition=new Recognition();recognition.lang='en-IE';recognition.onresult=(event:any)=>{const note=form.querySelector<HTMLTextAreaElement>('[name=note]')!;note.value=(note.value+' '+event.results[0][0].transcript).trim().slice(0,2000);status.textContent='Check your note before submitting.';};recognition.onerror=()=>{status.textContent='Dictation unavailable. You can type your note.';};recognition.onend=()=>{button.disabled=false;};try{recognition.start();button.disabled=true;status.textContent='Listening…';}catch{status.textContent='Dictation unavailable. You can type your note.';}});}
+ form.addEventListener('submit',async e=>{
+  e.preventDefault();const fields=new FormData(form),button=document.querySelector<HTMLButtonElement>('#submit-report')!,status=document.querySelector('#save-status')!;
+  const answers=Object.fromEntries(definition.fields.map(f=>[f.id,String(fields.get(f.id)||'').trim()])),note=String(fields.get('note')||'');
+  const body={pharmacyId,type,answers,note,occurredAt:new Date(String(fields.get('occurred'))).toISOString(),dueAt:due,ownerId:owner};
   if(!retry||JSON.stringify(retry.body)!==JSON.stringify(body))retry={key:crypto.randomUUID(),body};
   button.disabled=true;status.textContent='Saving…';
-  try{await api('/reports',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':retry.key},body:JSON.stringify(body)});retry=null;status.textContent='Saved. Your reviewer has an action.';form.reset();message('Report saved. Review action created.');try{await refresh();}catch{status.textContent='Report saved. Refresh the page to view it.';}}catch(e){status.textContent=(e as Error).message+' Your draft remains here; retry when ready.';}finally{button.disabled=false;}
+  try{await api('/reports',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':retry.key},body:JSON.stringify(body)});retry=null;form.reset();screen='list';reportMode='report';render();message('Report saved.');try{await refresh();}catch{message('Report saved. Records will update when you reconnect.');}}catch(e){status.textContent=(e as Error).message+' Your draft remains here; retry when ready.';}finally{button.disabled=false;}
  });
+ window.scrollTo({top:0,behavior:'instant'});
 }
 async function viewReport(id:string,pushHistory=true){
  const r=data.reports.find((r:any)=>r.id===id);if(!r)return;
