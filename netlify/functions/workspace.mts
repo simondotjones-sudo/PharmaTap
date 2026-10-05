@@ -2,7 +2,7 @@ import type { Config } from '@netlify/functions';
 import { getUser } from '@netlify/identity';
 import {workspaceDatabase} from './_shared/database';
 import {initialiseApprovedAdministrator} from './_shared/installation';
-import { Fault,session,list,createReport,updateAction,history,exportPharmacy } from './_shared/service';
+import { Fault,session,list,createReport,updateAction,history,exportPharmacy,reportPhoto } from './_shared/service';
 import {guard} from './_shared/http';
 export {guard} from './_shared/http';
 function json(data:unknown,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});}
@@ -28,8 +28,12 @@ export default async (req:Request) => {
   else if(req.method==='GET'&&path==='/reports')result=await list(client,actor,url.searchParams.get('pharmacyId')||'');
   else if(req.method==='GET'&&path==='/export')result=await exportPharmacy(client,actor,url.searchParams.get('pharmacyId')||'');
   else if(req.method==='GET'&&/^\/reports\/[^/]+\/history$/.test(path))result=await history(client,actor,path.split('/')[2]);
+  else if(req.method==='GET'&&/^\/reports\/[^/]+\/photo$/.test(path)){
+   const photo=await reportPhoto(client,actor,path.split('/')[2]);await client.query('COMMIT');
+   return new Response(new Uint8Array(photo.data),{headers:{'Content-Type':photo.content_type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="maintenance-photo.jpg"'}});
+  }
   else if(req.method==='POST'&&path==='/reports'){
-   const raw=await req.text();if(raw.length>12000)throw new Fault(413,'Report is too large.');
+   const raw=await req.text();if(raw.length>1450000)throw new Fault(413,'Report is too large.');
    let body;try{body=JSON.parse(raw);}catch{throw new Fault(400,'Invalid JSON.');}
    result=await createReport(client,actor,body,req.headers.get('idempotency-key')||'');
   } else if(req.method==='PATCH'&&/^\/actions\/[^/]+$/.test(path)){

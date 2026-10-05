@@ -1,5 +1,6 @@
 import { login,logout,getUser,handleAuthCallback,acceptInvite,updateUser,requestPasswordRecovery } from '@netlify/identity';
 import {reportTypes,type ReportType} from './report-types';
+import {prepareReportPhoto} from './report-photo';
 const root=document.querySelector<HTMLElement>('#workspace')!,account=document.querySelector<HTMLElement>('#account')!;
 const escape=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 let userId='',organisations:any[]=[],organisationId='',pharmacies:any[]=[],pharmacyId='',data:any={reports:[],reviewers:[],role:'staff'},tab='home',viewRole='',profileOpen=false;
@@ -44,7 +45,7 @@ async function start(){
  await refresh();
 }
 async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));screen='list';render();}
-const APP_VERSION='1.05.10.26.5';
+const APP_VERSION='1.05.10.26.6';
 const roleLabel=(role:string)=>({'staff':'Staff','manager':'Pharmacist','superintendent':'Organisation admin'}[role]||role);
 function render(){
  const site=pharmacies.find(p=>p.id===pharmacyId),organisation=organisations.find(o=>o.id===organisationId),accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
@@ -131,7 +132,7 @@ const reportTileTitles:Record<string,[string,string]>={
 };
 function hideReportContext(){document.querySelector('.site-context')?.remove();document.querySelector('.report-switch')?.remove();}
 function reportTiles(){
- document.querySelector('#content')!.innerHTML=`<section class="report-tiles" aria-label="Choose a report type">${reportTypes.map((t,i)=>t.type==='Maintenance'?'':`<button class="report-tile" data-report-type="${escape(t.type)}"><span class="report-tile-icon" aria-hidden="true">${icon(['prescription','medicine','shield','refusal','warning','injury','wrench','security','complaint','quality','other'][i])}</span><strong class="report-tile-title">${reportTileTitles[t.type].map(line=>`<span>${escape(line)}</span>`).join(' ')}</strong><span>${escape(t.subtitle)}</span></button>`).join('')}</section>`;
+ document.querySelector('#content')!.innerHTML=`<section class="report-tiles" aria-label="Choose a report type">${reportTypes.map((t,i)=>t.type==='Maintenance'?'':`<button class="report-tile" data-report-type="${escape(t.type)}"><span class="report-tile-icon" aria-hidden="true">${icon(['prescription','medicine','shield','refusal','warning','injury','wrench','security','complaint','quality','other'][i])}</span><strong class="report-tile-title">${reportTileTitles[t.type].map(line=>`<span>${escape(line)}</span>`).join(' ')}</strong><span>${t.type==='Refusal of supply'?t.subtitle.split(', ').map(escape).join('<br>'):escape(t.subtitle)}</span></button>`).join('')}</section>`;
  document.querySelectorAll<HTMLElement>('[data-report-type]').forEach(el=>el.addEventListener('click',()=>newReport(true,el.dataset.reportType!)));
 }
 function reportField(field:ReportType['fields'][number]){
@@ -143,16 +144,24 @@ function newReport(pushHistory=true,type='Near miss'){
  const definition=reportTypes.find(t=>t.type===type);if(!definition)return;
  if(pushHistory)remember();selectedReportType=type;screen='report';reportMode='report';hideReportContext();renderNavigation();
  const occurred=local(new Date()),due=new Date(Date.now()+86400000).toISOString(),owner=data.reviewers[0].user_id;
- document.querySelector('#content')!.innerHTML=`<section class="card quick-report"><div class="row"><h2>${escape(definition.label)}</h2><button type="button" class="secondary" id="change-report">Change type</button></div><form id="report-form">${definition.fields.map(reportField).join('')}<p id="urgent-report" class="urgent-report" role="alert" hidden>Alert the pharmacist immediately. Submitting this report does not contact them or emergency services.</p><details class="report-more"><summary>Add more detail</summary><label><span id="notes-label">Notes (optional)</span><textarea name="note" maxlength="2000" rows="3" placeholder="Keep patient names and identifiers in your clinical system."></textarea></label><button type="button" class="secondary" id="dictate" hidden>Dictate note</button><p id="dictation-status" role="status"></p><label>Occurred<input type="datetime-local" name="occurred" value="${occurred}" required></label></details><p class="report-routing">Review assigned to ${escape(data.reviewers[0].display_name)}.</p><p id="save-status" role="status"></p><button id="submit-report">Submit report</button></form></section>`;
+ document.querySelector('#content')!.innerHTML=`<section class="card quick-report"><div class="row"><h2>${escape(definition.label)}</h2><button type="button" class="secondary" id="change-report">Change type</button></div><form id="report-form">${definition.fields.map(reportField).join('')}${type==='Maintenance'?`<section class="photo-capture" aria-label="Maintenance photo"><input id="maintenance-photo" type="file" accept="image/*" capture="environment" hidden><button type="button" class="secondary" id="snap-photo">Snap a photo</button><div id="photo-preview" hidden><img alt="Maintenance photo preview"><button type="button" class="secondary" id="remove-photo">Remove photo</button></div><p id="photo-status" role="status"></p></section>`:''}<p id="urgent-report" class="urgent-report" role="alert" hidden>Alert the pharmacist immediately. Submitting this report does not contact them or emergency services.</p><details class="report-more"><summary>Add more detail</summary><label><span id="notes-label">Notes (optional)</span><textarea name="note" maxlength="2000" rows="3" placeholder="Keep patient names and identifiers in your clinical system."></textarea></label><button type="button" class="secondary" id="dictate" hidden>Dictate note</button><p id="dictation-status" role="status"></p><label>Occurred<input type="datetime-local" name="occurred" value="${occurred}" required></label></details><p class="report-routing">Review assigned to ${escape(data.reviewers[0].display_name)}.</p><p id="save-status" role="status"></p><button id="submit-report">Submit report</button></form></section>`;
  document.querySelector('#change-report')!.addEventListener('click',()=>{retry=null;screen='list';render();});
  const form=document.querySelector<HTMLFormElement>('#report-form')!;
+ let photo:string|undefined,photoBusy=false;
+ if(type==='Maintenance'){
+  const input=document.querySelector<HTMLInputElement>('#maintenance-photo')!,preview=document.querySelector<HTMLElement>('#photo-preview')!,status=document.querySelector('#photo-status')!,snap=document.querySelector<HTMLButtonElement>('#snap-photo')!,remove=document.querySelector<HTMLButtonElement>('#remove-photo')!;
+  snap.addEventListener('click',()=>input.click());
+  input.addEventListener('change',async()=>{const file=input.files?.[0];if(!file)return;photoBusy=true;snap.disabled=true;remove.disabled=true;form.querySelector<HTMLButtonElement>('#submit-report')!.disabled=true;status.textContent='Preparing photo…';try{photo=await prepareReportPhoto(file);preview.querySelector('img')!.src='data:image/jpeg;base64,'+photo;preview.hidden=false;snap.textContent='Retake photo';status.textContent='Photo ready.';}catch(e){status.textContent=(e as Error).message;}finally{input.value='';photoBusy=false;snap.disabled=false;remove.disabled=false;form.querySelector<HTMLButtonElement>('#submit-report')!.disabled=false;}});
+  remove.addEventListener('click',()=>{photo=undefined;preview.hidden=true;preview.querySelector('img')!.removeAttribute('src');snap.textContent='Snap a photo';status.textContent='';});
+ }
+
  form.addEventListener('change',()=>{const values=new FormData(form),urgent=values.get('harm');document.querySelector('#urgent-report')!.toggleAttribute('hidden',!urgent||urgent==='No');const other=definition.fields.some(f=>values.get(f.id)==='Other'),note=form.querySelector<HTMLTextAreaElement>('[name=note]')!;note.required=other;document.querySelector('#notes-label')!.textContent=other?'Brief detail':'Notes (optional)';if(other)form.querySelector<HTMLDetailsElement>('details')!.open=true;});
  const Recognition=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;
  if(Recognition){const button=document.querySelector<HTMLButtonElement>('#dictate')!,status=document.querySelector('#dictation-status')!;button.hidden=false;button.addEventListener('click',()=>{const recognition=new Recognition();recognition.lang='en-IE';recognition.onresult=(event:any)=>{const note=form.querySelector<HTMLTextAreaElement>('[name=note]')!;note.value=(note.value+' '+event.results[0][0].transcript).trim().slice(0,2000);status.textContent='Check your note before submitting.';};recognition.onerror=()=>{status.textContent='Dictation unavailable. You can type your note.';};recognition.onend=()=>{button.disabled=false;};try{recognition.start();button.disabled=true;status.textContent='Listening…';}catch{status.textContent='Dictation unavailable. You can type your note.';}});}
  form.addEventListener('submit',async e=>{
-  e.preventDefault();const fields=new FormData(form),button=document.querySelector<HTMLButtonElement>('#submit-report')!,status=document.querySelector('#save-status')!;
+  e.preventDefault();if(photoBusy)return;const fields=new FormData(form),button=document.querySelector<HTMLButtonElement>('#submit-report')!,status=document.querySelector('#save-status')!;
   const answers=Object.fromEntries(definition.fields.map(f=>[f.id,String(fields.get(f.id)||'').trim()])),note=String(fields.get('note')||'');
-  const body={pharmacyId,type,answers,note,occurredAt:new Date(String(fields.get('occurred'))).toISOString(),dueAt:due,ownerId:owner};
+  const body={pharmacyId,type,answers,note,occurredAt:new Date(String(fields.get('occurred'))).toISOString(),dueAt:due,ownerId:owner,...(photo?{photo}:{})};
   if(!retry||JSON.stringify(retry.body)!==JSON.stringify(body))retry={key:crypto.randomUUID(),body};
   button.disabled=true;status.textContent='Saving…';
   try{await api('/reports',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':retry.key},body:JSON.stringify(body)});retry=null;form.reset();screen='list';reportMode='report';render();message('Report saved.');try{await refresh();}catch{message('Report saved. Records will update when you reconnect.');}}catch(e){status.textContent=(e as Error).message+' Your draft remains here; retry when ready.';}finally{button.disabled=false;}
@@ -162,13 +171,18 @@ function newReport(pushHistory=true,type='Near miss'){
 async function viewReport(id:string,pushHistory=true){
  const r=data.reports.find((r:any)=>r.id===id);if(!r)return;
  if(pushHistory)remember();screen='detail';recordId=id;hideReportContext();renderNavigation();
- document.querySelector('#content')!.innerHTML=`<article class="card"><small>${escape(r.type)} · Report ${escape(r.id)}</small><h2>${escape(r.title)}</h2><p class="detail">${escape(r.detail)}</p><p>Occurred ${escape(stamp(r.occurred_at))}</p><p>Reviewer: ${escape(r.owner_name)} · ${escape(r.status)}</p>${r.resolution?`<h3>Review notes</h3><p class="detail">${escape(r.resolution)}</p>`:''}${data.role!=='staff'&&r.status!=='Closed'?`<form id="review-form"><label>Status<select name="status">${['Open','Awaiting review','Closed'].map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}</select></label><label>Review notes<textarea name="resolution" maxlength="4000">${escape(r.resolution)}</textarea></label><button>Save review</button></form>`:''}<div class="toolbar"><button class="secondary" id="back">Back</button></div><h3>History</h3><div id="history">Loading history…</div></article>`;
+ document.querySelector('#content')!.innerHTML=`<article class="card"><small>${escape(r.type)} · Report ${escape(r.id)}</small><h2>${escape(r.title)}</h2><p class="detail">${escape(r.detail)}</p>${r.has_photo?'<section class="report-photo"><h3>Photo</h3><div id="saved-photo">Loading photo…</div></section>':''}<p>Occurred ${escape(stamp(r.occurred_at))}</p><p>Reviewer: ${escape(r.owner_name)} · ${escape(r.status)}</p>${r.resolution?`<h3>Review notes</h3><p class="detail">${escape(r.resolution)}</p>`:''}${data.role!=='staff'&&r.status!=='Closed'?`<form id="review-form"><label>Status<select name="status">${['Open','Awaiting review','Closed'].map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}</select></label><label>Review notes<textarea name="resolution" maxlength="4000">${escape(r.resolution)}</textarea></label><button>Save review</button></form>`:''}<div class="toolbar"><button class="secondary" id="back">Back</button></div><h3>History</h3><div id="history">Loading history…</div></article>`;
+ if(r.has_photo)void loadReportPhoto(id);
  document.querySelector('#back')!.addEventListener('click',goBack);
  document.querySelector('#review-form')?.addEventListener('submit',async e=>{
   e.preventDefault();const form=e.target as HTMLFormElement,fields=new FormData(form),button=form.querySelector('button')!;button.disabled=true;
   try{await api('/actions/'+r.action_id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:r.version,status:fields.get('status'),resolution:fields.get('resolution')})});message('Review saved.');await refresh();}catch(e){message((e as Error).message);}finally{button.disabled=false;}
  });
  try{const events=await api('/reports/'+id+'/history');const el=document.querySelector('#history');if(el)el.innerHTML=events.map((a:any)=>`<p><strong>${escape(a.event)}</strong> · ${escape(stamp(a.created_at))}<br><small>Recorded by ${escape(a.actor_id)}</small></p>`).join('');}catch(e){const el=document.querySelector('#history');if(el)el.textContent=(e as Error).message;}
+}
+async function loadReportPhoto(id:string){
+ const container=document.querySelector('#saved-photo');if(!container)return;
+ try{const response=await fetch('/api/workspace/reports/'+encodeURIComponent(id)+'/photo',{credentials:'same-origin',cache:'no-store',headers:viewRole?{'X-PharmaTap-Role':viewRole}:{}});if(!response.ok)throw new Error('Unable to load photo.');const blob=await response.blob();if(!container.isConnected)return;const url=URL.createObjectURL(blob),img=new Image();img.alt='Maintenance report photo';img.onload=img.onerror=()=>URL.revokeObjectURL(url);img.src=url;container.replaceChildren(img);}catch{if(container.isConnected)container.textContent='Photo could not be loaded. Reopen the report to try again.';}
 }
 async function boot(){
  try{
