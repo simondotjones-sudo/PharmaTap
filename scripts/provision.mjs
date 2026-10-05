@@ -6,7 +6,7 @@ const config=JSON.parse(await readFile(file,'utf8'));
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 if(!uuid.test(config.organisation?.id)||!config.organisation?.name?.trim()||!Array.isArray(config.pharmacies)||!config.pharmacies.length)throw new Error('Provide an organisation and pharmacies.');
 for(const p of config.pharmacies){if(!uuid.test(p.id)||!p.name?.trim()||!Array.isArray(p.members)||!p.members.some(m=>['manager','superintendent'].includes(m.role)&&m.active!==false))throw new Error('Each pharmacy needs an ID, name and reviewer.');for(const m of p.members)if(!m.userId||!m.displayName||!['staff','manager','superintendent'].includes(m.role))throw new Error('Invalid member. Use verified Identity user IDs.');}
-const db=getDatabase();
+const db=getDatabase(process.env.PHARMATAP_DATABASE_PROVIDER==='neon'?{connectionString:process.env.NETLIFY_DATABASE_URL||process.env.DATABASE_URL}:undefined);
 const client=await db.pool.connect();
 try{
  await client.query('BEGIN');

@@ -5,7 +5,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts tests/*.test.js"
   },
   "repository": {
     "type": "git",

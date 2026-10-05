@@ -1,3 +1,5 @@
+import {prepareNeon} from './migrate-neon.mjs';
+await prepareNeon();
 import { mkdir,cp } from 'node:fs/promises';
 import { build } from 'esbuild';
 await mkdir('dist',{recursive:true});

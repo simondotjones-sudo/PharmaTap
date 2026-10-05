@@ -1,6 +1,6 @@
 import type { Config } from '@netlify/functions';
 import { getUser } from '@netlify/identity';
-import { getDatabase } from '@netlify/database';
+import {workspaceDatabase} from './_shared/database';
 import {initialiseApprovedAdministrator} from './_shared/installation';
 import { Fault,session,list,createReport,updateAction,history,exportPharmacy } from './_shared/service';
 import {guard} from './_shared/http';
@@ -10,10 +10,18 @@ export default async (req:Request) => {
  let client;
  try {
   guard(req);const user=await getUser();if(!user)throw new Fault(401,'Sign in to continue.');
-  const actor={id:user.id,viewRole:req.headers.get('x-pharmatap-role')||undefined};client=await getDatabase().pool.connect();
+  const actor={id:user.id,viewRole:req.headers.get('x-pharmatap-role')||undefined};client=await workspaceDatabase().pool.connect();
   await client.query(req.method==='GET' ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
   await client.query("SET LOCAL statement_timeout='10s'");
   const url=new URL(req.url),path=url.pathname.slice('/api/workspace'.length);
+  if(process.env.PHARMATAP_DATABASE_PROVIDER==='neon'){
+   const ready=await client.query("SELECT 1 FROM database_transfer WHERE key='netlify-to-neon'");
+   if(!ready.rows.length)throw new Fault(503,'The database migration has not been verified.');
+  }
+  if(req.method!=='GET'){
+   const control=await client.query('SELECT writes_paused FROM database_control WHERE id=true FOR SHARE');
+   if(control.rows[0]?.writes_paused)throw new Fault(503,'Database maintenance is in progress. Please try again shortly.');
+  }
   let result;
   if(req.method==='GET'&&path==='/session')result=await session(client,actor);
   else if(req.method==='POST'&&path==='/initialise')result=await initialiseApprovedAdministrator(client,actor);
