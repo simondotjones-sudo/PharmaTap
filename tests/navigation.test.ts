@@ -17,7 +17,7 @@ test('working workspace keeps navigation, bell, profile and report drafts togeth
  assert.equal(document.querySelectorAll('.mobile-navigation button').length,4);
  assert.equal(document.querySelectorAll('.home-task').length,6);
  assert.equal(document.querySelector('.site-context'),null);
- assert.equal(document.querySelector('.profile-version')?.textContent,'PharmaTap Version 1.05.10.26.7');
+ assert.equal(document.querySelector('.profile-version')?.textContent,'PharmaTap Version 1.05.10.26.8');
  assert.equal(document.querySelector('#action-bell .action-count')?.textContent,'2');
  click('#action-bell');assert.equal(document.querySelector('h1')?.textContent,'My Actions');assert.equal(document.querySelectorAll('[data-record]').length,2);
  click('[data-nav-action=back]');assert.equal(document.querySelectorAll('.home-task').length,6);
@@ -28,6 +28,10 @@ test('working workspace keeps navigation, bell, profile and report drafts togeth
  click('#profile-trigger');assert.equal(document.querySelector('#profile-panel')?.hasAttribute('hidden'),false);click('#profile-trigger');assert.equal((document.querySelector('[name=medicine]') as any).value,'Keep this draft');
  click('[data-nav-action=back]');assert.equal(document.querySelector('#report-form'),null);assert.equal(document.querySelector('h1')?.textContent,'Reports');
  assert.ok(document.querySelector('.report-switch'));click('[data-nav-action=home]');click('[data-task=faults]');assert.equal(document.querySelector('.quick-report h2')?.textContent,'Maintenance issue');assert.equal(document.querySelector('.report-switch'),null);click('[data-nav-action=menu]');document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(document.querySelector('#navigation-drawer'),null);
+ click('[data-nav-action=home]');click('[data-task=checks]');assert.equal(document.querySelector('h1')?.textContent,'Checks');assert.equal(document.querySelector('.site-context'),null);assert.equal(document.querySelectorAll('[data-check-open]').length,9);
+ click('[data-check-mode=manage]');click('[data-check-toggle="check-1"]');assert.equal(document.querySelector('[data-check-toggle="check-1"]')?.getAttribute('aria-checked'),'false');click('[data-check-edit="check-2"]');assert.equal(document.querySelector('.checks-switch'),null);(document.querySelector('[name=title]') as any).value='Storage temperature';(document.querySelector('#check-edit') as any).dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));assert.match(document.querySelector('[data-check-open="check-2"]')!.textContent!,/Storage\s+temperature/);
+ click('[data-check-mode=checks]');assert.equal(document.querySelectorAll('[data-check-open]').length,8);click('[data-check-open="check-2"]');assert.match(document.querySelector('#checks-body')!.textContent!,/questions have not been added/);click('[data-nav-action=back]');assert.equal(document.querySelectorAll('[data-check-open]').length,8);
+ click('[data-check-mode=dashboard]');assert.match(document.querySelector('#checks-body')!.textContent!,/No check records yet/);click('[data-dashboard-frequency="Twice yearly"]');assert.equal(document.querySelectorAll('[data-check-open]').length,1);
  click('#profile-trigger');click('#logout');for(let i=0;i<50&&!document.querySelector('#login');i++)await new Promise(r=>setTimeout(r,5));assert.ok(document.querySelector('#login'));assert.equal(document.querySelector('#navigation-root'),null);assert.equal(document.querySelector('#action-bell'),null);
  }finally{await window.happyDOM.abort();}
 });
