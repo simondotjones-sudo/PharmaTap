@@ -15,8 +15,9 @@ export async function membership(db:DB,actor:Actor,pharmacy:string) {
  return rows[0]||fail(403,'You do not have access to this pharmacy.');
 }
 export async function session(db:DB,actor:Actor){
- const {rows}=await db.query('SELECT p.id,p.name,p.timezone,m.role,m.display_name FROM memberships m JOIN pharmacies p ON p.id=m.pharmacy_id WHERE m.user_id=$1 AND m.active=true ORDER BY p.name',[actor.id]);
- return {userId:actor.id,pharmacies:rows};
+ const {rows}=await db.query('SELECT p.id,p.name,p.timezone,p.organisation_id,o.name AS organisation_name,o.is_demo,m.role,m.display_name FROM memberships m JOIN pharmacies p ON p.id=m.pharmacy_id JOIN organisations o ON o.id=p.organisation_id WHERE m.user_id=$1 AND m.active=true ORDER BY o.is_demo,o.name,p.name',[actor.id]);
+ const organisations=await db.query("SELECT o.id,o.name,o.is_demo,om.role FROM organisation_memberships om JOIN organisations o ON o.id=om.organisation_id WHERE om.user_id=$1 AND om.active=true ORDER BY o.is_demo,o.name",[actor.id]);
+ return {userId:actor.id,pharmacies:rows,organisations:organisations.rows};
 }
 export async function list(db:DB,actor:Actor,pharmacy:string){
  const m=await membership(db,actor,pharmacy);

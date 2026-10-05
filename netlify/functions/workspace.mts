@@ -2,12 +2,8 @@ import type { Config } from '@netlify/functions';
 import { getUser } from '@netlify/identity';
 import { getDatabase } from '@netlify/database';
 import { Fault,session,list,createReport,updateAction,history,exportPharmacy } from './_shared/service';
-export function guard(req:Request){
- if(req.method!=='GET'){
-  if(req.headers.get('origin')!==new URL(req.url).origin)throw new Fault(403,'Request origin is not allowed.');
-  if(!req.headers.get('content-type')?.startsWith('application/json'))throw new Fault(415,'Use JSON for submissions.');
- }
-}
+import {guard} from './_shared/http';
+export {guard} from './_shared/http';
 function json(data:unknown,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});}
 export default async (req:Request) => {
  let client;

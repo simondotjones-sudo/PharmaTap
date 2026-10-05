@@ -1,7 +1,7 @@
 import { login,logout,getUser,handleAuthCallback,acceptInvite,updateUser,requestPasswordRecovery } from '@netlify/identity';
 const root=document.querySelector<HTMLElement>('#workspace')!,account=document.querySelector<HTMLElement>('#account')!;
 const escape=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
-let userId='',pharmacies:any[]=[],pharmacyId='',data:any={reports:[],reviewers:[],role:'staff'},tab='reports';
+let userId='',organisations:any[]=[],organisationId='',pharmacies:any[]=[],pharmacyId='',data:any={reports:[],reviewers:[],role:'staff'},tab='reports';
 let retry:{key:string,body:any}|null=null;
 function message(text:string){const el=document.querySelector('#message')!;el.textContent=text;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),6000);}
 async function api(path:string,options:RequestInit={}){
@@ -30,21 +30,23 @@ function invitationForm(){
 }
 async function start(){
  const user=await getUser();if(!user){signIn();return;}userId=user.id;
- const result=await api('/session');pharmacies=result.pharmacies;
+ const result=await api('/session');pharmacies=result.pharmacies;organisations=(result.organisations||[]).filter((o:any)=>pharmacies.some(p=>p.organisation_id===o.id));if(!organisations.length)organisations=[...new Map(pharmacies.map(p=>[p.organisation_id,{id:p.organisation_id,name:p.organisation_name,role:p.role}])).values()];
  account.innerHTML=`<span>${escape(user.name||user.email)}</span><button id="logout" class="secondary">Sign out</button>`;
  document.querySelector('#logout')!.addEventListener('click',async()=>{try{await logout();}finally{data={reports:[],reviewers:[],role:'staff'};retry=null;pharmacies=[];userId='';signIn();}});
  if(!pharmacies.length){root.innerHTML=`<section class="card"><h1>Access pending</h1><p>Your administrator needs to assign your pharmacy and role before you can use the workspace.</p><p class="help">Account reference: <code>${escape(userId)}</code></p></section>`;return;}
- if(!pharmacies.some(p=>p.id===pharmacyId))pharmacyId=pharmacies[0].id;
+ if(!organisations.some(o=>o.id===organisationId))organisationId=organisations[0].id;
+ if(!pharmacies.some(p=>p.id===pharmacyId&&p.organisation_id===organisationId))pharmacyId=pharmacies.find(p=>p.organisation_id===organisationId)!.id;
  await refresh();
 }
 async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));render();}
 function render(){
- const site=pharmacies.find(p=>p.id===pharmacyId);
+ const site=pharmacies.find(p=>p.id===pharmacyId);const organisation=organisations.find(o=>o.id===organisationId);const accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
  const open=data.reports.filter((r:any)=>r.status!=='Closed');const overdue=open.filter((r:any)=>Date.parse(r.due_at)<Date.now());
- root.innerHTML=`<div class="row"><div><h1>${escape(site.name)}</h1><small>${escape(site.display_name)} · ${escape(data.role)}</small></div><label class="pharmacy">Pharmacy<select id="pharmacy">${pharmacies.map(p=>`<option value="${escape(p.id)}" ${p.id===pharmacyId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label></div><div class="toolbar"><button id="reports" class="secondary" aria-pressed="${tab==='reports'}">Reports</button><button id="actions" class="secondary" aria-pressed="${tab==='actions'}">My Actions (${open.filter((r:any)=>r.owner_id===userId).length})</button><button id="new">Report</button><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div><small>${data.role==='staff'?'Showing your reports.':'Showing this pharmacy’s reports.'} Times shown in your device’s timezone (${escape(Intl.DateTimeFormat().resolvedOptions().timeZone)}).</small><section id="content"></section>`;
+ root.innerHTML=`<div class="row"><div><h1>${escape(site.name)}</h1><small>${escape(organisation.name)} · ${escape(site.display_name)} · ${organisation.role==='admin'?'Organisation admin':escape(data.role)}</small></div><div class="columns"><label class="pharmacy">Organisation<select id="organisation">${organisations.map(o=>`<option value="${escape(o.id)}" ${o.id===organisationId?'selected':''}>${escape(o.name)}</option>`).join('')}</select></label><label class="pharmacy">Pharmacy<select id="pharmacy">${accessibleSites.map(p=>`<option value="${escape(p.id)}" ${p.id===pharmacyId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label></div></div><div class="toolbar"><button id="reports" class="secondary" aria-pressed="${tab==='reports'}">Reports</button><button id="actions" class="secondary" aria-pressed="${tab==='actions'}">My Actions (${open.filter((r:any)=>r.owner_id===userId).length})</button><button id="new">Report</button><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div><small>${data.role==='staff'?'Showing your reports.':'Showing this pharmacy’s reports.'} Times shown in your device’s timezone (${escape(Intl.DateTimeFormat().resolvedOptions().timeZone)}).</small><section id="content"></section>`;
  const content=document.querySelector('#content')!;
  const records=tab==='actions'?data.reports.filter((r:any)=>r.owner_id===userId&&r.status!=='Closed'):data.reports;
  content.innerHTML=records.map((r:any)=>`<article class="card"><div class="row"><div><small>${escape(r.type)} · ${escape(stamp(r.created_at))}</small><h2>${escape(r.title)}</h2></div><span class="pill ${r.status!=='Closed'&&Date.parse(r.due_at)<Date.now()?'overdue':''}">${escape(r.status)}</span></div><p class="muted">Reviewer: ${escape(r.owner_name)} · Due ${escape(stamp(r.due_at))}</p><button class="secondary" data-record="${escape(r.id)}">View report</button></article>`).join('')||'<section class="card"><h2>All clear</h2><p>No records in this view.</p></section>';
+ document.querySelector('#organisation')!.addEventListener('change',async e=>{organisationId=(e.target as HTMLSelectElement).value;pharmacyId=pharmacies.find(p=>p.organisation_id===organisationId)!.id;retry=null;data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening organisation…</p>';try{await refresh();}catch(e){root.innerHTML='<p>Could not open this organisation. Reload to try again.</p>';message((e as Error).message);}});
  document.querySelector('#pharmacy')!.addEventListener('change',async e=>{pharmacyId=(e.target as HTMLSelectElement).value;retry=null;data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening pharmacy…</p>';try{await refresh();}catch(e){root.innerHTML='<p>Could not open this pharmacy. Reload to try again.</p>';message((e as Error).message);}});
  for(const name of ['reports','actions'])document.querySelector('#'+name)!.addEventListener('click',()=>{tab=name;render();});
  document.querySelector('#new')!.addEventListener('click',newReport);

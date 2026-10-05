@@ -7,7 +7,7 @@ import { session,list,createReport,updateAction,history,exportPharmacy,Fault } f
 import { guard } from '../netlify/functions/workspace.mts';
 const migration=await readFile('netlify/database/migrations/001_working-foundation/migration.sql','utf8');
 async function fixture(){
- const pg=new PGlite();await pg.exec(migration);const db={query:async(sql:string,params:any[]=[])=>{const result=await pg.query(sql,params);return {rows:result.rows as any[]};}};
+ const pg=new PGlite();await pg.exec(migration);await pg.exec(await readFile('netlify/database/migrations/002_organisation-catalogue/migration.sql','utf8'));const db={query:async(sql:string,params:any[]=[])=>{const result=await pg.query(sql,params);return {rows:result.rows as any[]};}};
  const org=randomUUID(),otherOrg=randomUUID(),site=randomUUID(),otherSite=randomUUID();
  await db.query('INSERT INTO organisations VALUES($1,$2),($3,$4)',[org,'Group',otherOrg,'Other group']);
  await db.query('INSERT INTO pharmacies(id,organisation_id,name) VALUES($1,$2,$3),($4,$5,$6)',[site,org,'First pharmacy',otherSite,otherOrg,'Other pharmacy']);
