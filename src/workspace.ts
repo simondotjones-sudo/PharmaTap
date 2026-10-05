@@ -12,19 +12,28 @@ async function api(path:string,options:RequestInit={}){
 const stamp=(v:string)=>new Date(v).toLocaleString('en-IE',{dateStyle:'medium',timeStyle:'short'});
 const local=(d:Date)=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
 function signIn(error=''){
- account.innerHTML='';root.innerHTML=`<section class="card login"><h1>Sign in</h1><p class="muted">Your pharmacy workspace.</p><form id="login"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><p class="error" id="login-error">${escape(error)}</p><button>Sign in</button> <button type="button" id="forgot" class="secondary">Reset password</button></form></section>`;
+ account.innerHTML='';root.innerHTML=`<section class="card login"><h1>Sign in</h1><p class="muted">Your pharmacy workspace.</p><form id="login"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><p class="error" id="login-error">${escape(error)}</p><button>Sign in</button> <button type="button" id="forgot" class="secondary">Reset password</button><div class="toolbar"><button type="button" id="accept-invitation" class="secondary">Accept invitation</button></div></form></section>`;
  document.querySelector('#login')!.addEventListener('submit',async e=>{
   e.preventDefault();const form=e.target as HTMLFormElement,button=form.querySelector('button')!;button.disabled=true;
   try{const f=new FormData(form);await login(String(f.get('email')),String(f.get('password')));form.reset();await start();}catch(e){document.querySelector('#login-error')!.textContent=(e as Error).message;}finally{button.disabled=false;}
  });
+ document.querySelector('#accept-invitation')!.addEventListener('click',invitationForm);
  document.querySelector('#forgot')!.addEventListener('click',async()=>{const email=(document.querySelector('[name=email]') as HTMLInputElement);if(!email.reportValidity()||!email.value)return;try{await requestPasswordRecovery(email.value);message('If an account exists, check your email for the reset link.');}catch{message('Password reset is unavailable. Please contact your administrator.');}});
+}
+function invitationForm(){
+ root.innerHTML='<section class="card login"><h1>Accept invitation</h1><p class="help">Paste the link from your invitation email to activate your account in this preview.</p><form id="invitation"><label>Invitation link<input name="link" type="url" autocomplete="off" required></label><label>New password<input name="password" type="password" autocomplete="new-password" minlength="12" required></label><p class="error" id="invitation-error"></p><button>Activate account</button> <button class="secondary" id="invitation-back" type="button">Back</button></form></section>';
+ document.querySelector('#invitation-back')!.addEventListener('click',()=>signIn());
+ document.querySelector('#invitation')!.addEventListener('submit',async e=>{
+  e.preventDefault();const form=e.target as HTMLFormElement,button=form.querySelector('button')!;button.disabled=true;
+  try{const f=new FormData(form),link=new URL(String(f.get('link')));const token=new URLSearchParams(link.hash.slice(1)).get('invite_token');if(!token)throw new Error('Use the complete invitation link from your email.');await acceptInvite(token,String(f.get('password')));form.reset();await start();}catch(e){document.querySelector('#invitation-error')!.textContent=(e as Error).message;}finally{button.disabled=false;}
+ });
 }
 async function start(){
  const user=await getUser();if(!user){signIn();return;}userId=user.id;
  const result=await api('/session');pharmacies=result.pharmacies;
  account.innerHTML=`<span>${escape(user.name||user.email)}</span><button id="logout" class="secondary">Sign out</button>`;
  document.querySelector('#logout')!.addEventListener('click',async()=>{try{await logout();}finally{data={reports:[],reviewers:[],role:'staff'};retry=null;pharmacies=[];userId='';signIn();}});
- if(!pharmacies.length){root.innerHTML='<section class="card"><h1>Access pending</h1><p>Your administrator needs to assign your pharmacy and role before you can use the workspace.</p></section>';return;}
+ if(!pharmacies.length){root.innerHTML=`<section class="card"><h1>Access pending</h1><p>Your administrator needs to assign your pharmacy and role before you can use the workspace.</p><p class="help">Account reference: <code>${escape(userId)}</code></p></section>`;return;}
  if(!pharmacies.some(p=>p.id===pharmacyId))pharmacyId=pharmacies[0].id;
  await refresh();
 }
