@@ -1,0 +1,24 @@
+{
+  "passed": 17,
+  "checks": [
+    "Initial render, bundled Gellix and image assets",
+    "All navigation pages render",
+    "SOP search and version-specific acknowledgement",
+    "Near-miss wizard, escaped text and reload persistence",
+    "Linked action evidence, effectiveness review and incident closure",
+    "Staff demo view hides pharmacist review and SOP publishing",
+    "Temperature consistency validation, excursion action and duplicate protection",
+    "Maintenance fault creates a linked action",
+    "Learning feedback and completion record",
+    "Staff recall response requires pharmacist confirmation",
+    "SOP draft, publish, archived history and acknowledgement invalidation",
+    "Audit findings create actions; evidence pack prints to PDF",
+    "Scoped assistant navigation and clinical-question handoff",
+    "Group view has 16 verified names, 4 unconfirmed slots and scoped site data",
+    "390px mobile layout, drawer, SOP dialog and assistant",
+    "320px small-screen layout remains within viewport",
+    "No browser runtime or console errors"
+  ],
+  "errors": [],
+  "completed": "2026-10-04T14:00:42.803Z"
+}
