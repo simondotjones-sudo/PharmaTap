@@ -44,7 +44,7 @@ async function start(){
  await refresh();
 }
 async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));screen='list';render();}
-const APP_VERSION='1.05.10.26.4';
+const APP_VERSION='1.05.10.26.5';
 const roleLabel=(role:string)=>({'staff':'Staff','manager':'Pharmacist','superintendent':'Organisation admin'}[role]||role);
 function render(){
  const site=pharmacies.find(p=>p.id===pharmacyId),organisation=organisations.find(o=>o.id===organisationId),accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
@@ -56,7 +56,7 @@ function render(){
  const trigger=document.querySelector('#profile-trigger');trigger?.setAttribute('aria-expanded',String(profileOpen));
  document.querySelector('#profile-panel')?.remove();
  account.insertAdjacentHTML('beforeend',`<section id="profile-panel" class="profile-panel" ${profileOpen?'':'hidden'} aria-label="Profile settings"><h2>${escape(site.display_name)}</h2><label>Organisation<select id="organisation">${organisations.map(o=>`<option value="${escape(o.id)}" ${o.id===organisationId?'selected':''}>${escape(o.name)}</option>`).join('')}</select></label><label>Site<select id="pharmacy">${accessibleSites.map(p=>`<option value="${escape(p.id)}" ${p.id===pharmacyId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label><label>Role<select id="role">${roles.map(r=>`<option value="${r}" ${r===(viewRole||site.role)?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></label><button id="logout" class="secondary">Sign out</button><small class="profile-version">PharmaTap Version ${APP_VERSION}</small></section>`);
- root.innerHTML=`${tab==='home'?'':`<div class="site-context"><span>${escape(organisation.name)} · ${escape(site.name)}</span><small>${escape(roleLabel(data.role))}</small></div>`}${!['reports','actions'].includes(tab)?'':`<h1>${tab==='actions'?'My Actions':'Reports'}</h1>${tab==='reports'&&data.role!=='staff'?`<div class="report-switch" role="group" aria-label="Reports view"><button data-report-mode="report" aria-pressed="${reportMode==='report'}">Report</button><button data-report-mode="view" aria-pressed="${reportMode==='view'}">View reports</button></div>`:''}${tab==='actions'||(reportMode==='view'&&data.role!=='staff')?`<div class="toolbar"><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div>`:''}`}<section id="content"></section>`;
+ root.innerHTML=`${['home','reports'].includes(tab)?'':`<div class="site-context"><span>${escape(organisation.name)} · ${escape(site.name)}</span><small>${escape(roleLabel(data.role))}</small></div>`}${!['reports','actions'].includes(tab)?'':`<h1>${tab==='actions'?'My Actions':'Reports'}</h1>${tab==='reports'&&screen==='list'&&data.role!=='staff'?`<div class="report-switch" role="group" aria-label="Reports view"><button data-report-mode="report" aria-pressed="${reportMode==='report'}">Report</button><button data-report-mode="view" aria-pressed="${reportMode==='view'}">View reports</button></div>`:''}${tab==='actions'||(reportMode==='view'&&data.role!=='staff')?`<div class="toolbar"><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div>`:''}`}<section id="content"></section>`;
  const content=document.querySelector('#content')!;
  const records=tab==='actions'?data.reports.filter((r:any)=>r.owner_id===userId&&r.status!=='Closed'):data.reports;
  content.innerHTML=records.map((r:any)=>`<article class="card"><div class="row"><div><small>${escape(r.type)} · ${escape(stamp(r.created_at))}</small><h2>${escape(r.title)}</h2></div><span class="pill ${r.status!=='Closed'&&Date.parse(r.due_at)<Date.now()?'overdue':''}">${escape(r.status)}</span></div><p class="muted">Reviewer: ${escape(r.owner_name)} · Due ${escape(stamp(r.due_at))}</p><button class="secondary" data-record="${escape(r.id)}">View report</button></article>`).join('')||'<section class="card"><h2>All clear</h2><p>No records in this view.</p></section>';
@@ -122,8 +122,16 @@ document.addEventListener('click',e=>{
  if(target.closest('[data-assistant-report]')){navigate('reports');newReport();}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Tab'&&(menuOpen||askOpen)){const panel=document.querySelector(askOpen?'#ask-panel':'#navigation-drawer'),items=panel?.querySelectorAll<HTMLElement>('button,textarea,select,input,a[href]');if(items?.length){const first=items[0],last=items[items.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}}if(e.key==='Escape'){if(profileOpen){closeProfile();document.querySelector<HTMLButtonElement>('#profile-trigger')?.focus();}else if(menuOpen||askOpen){const action=askOpen?'ask':'menu';menuOpen=false;askOpen=false;renderNavigation();document.querySelector<HTMLButtonElement>(`[data-nav-action=${action}]`)?.focus();}}});
+const reportTileTitles:Record<string,[string,string]>={
+ 'Prescription error':['Prescription','error'],'Medication error':['Medication','error'],
+ 'Near miss':['Near','miss'],'Refusal of supply':['Refusal of','supply'],
+ 'Safety concern':['Safety','concern'],'Accident or injury':['Accident','or injury'],
+ 'Security incident':['Security','incident'],'Complaint':['Customer','complaint'],
+ 'Medicine quality issue':['Medicine','quality'],'Other':['Other','event']
+};
+function hideReportContext(){document.querySelector('.site-context')?.remove();document.querySelector('.report-switch')?.remove();}
 function reportTiles(){
- document.querySelector('#content')!.innerHTML=`<section class="report-tiles" aria-label="Choose a report type">${reportTypes.map((t,i)=>`<button class="report-tile" data-report-type="${escape(t.type)}"><span class="report-tile-icon" aria-hidden="true">${icon(['prescription','medicine','shield','refusal','warning','injury','wrench','security','complaint','quality','other'][i])}</span><strong>${escape(t.label)}</strong><span>${escape(t.subtitle)}</span></button>`).join('')}</section>`;
+ document.querySelector('#content')!.innerHTML=`<section class="report-tiles" aria-label="Choose a report type">${reportTypes.map((t,i)=>t.type==='Maintenance'?'':`<button class="report-tile" data-report-type="${escape(t.type)}"><span class="report-tile-icon" aria-hidden="true">${icon(['prescription','medicine','shield','refusal','warning','injury','wrench','security','complaint','quality','other'][i])}</span><strong class="report-tile-title">${reportTileTitles[t.type].map(line=>`<span>${escape(line)}</span>`).join(' ')}</strong><span>${escape(t.subtitle)}</span></button>`).join('')}</section>`;
  document.querySelectorAll<HTMLElement>('[data-report-type]').forEach(el=>el.addEventListener('click',()=>newReport(true,el.dataset.reportType!)));
 }
 function reportField(field:ReportType['fields'][number]){
@@ -133,7 +141,7 @@ function reportField(field:ReportType['fields'][number]){
 function newReport(pushHistory=true,type='Near miss'){
  if(!data.reviewers.length){message('An active pharmacy reviewer must be assigned before reports can be submitted.');return;}
  const definition=reportTypes.find(t=>t.type===type);if(!definition)return;
- if(pushHistory)remember();selectedReportType=type;screen='report';reportMode='report';renderNavigation();
+ if(pushHistory)remember();selectedReportType=type;screen='report';reportMode='report';hideReportContext();renderNavigation();
  const occurred=local(new Date()),due=new Date(Date.now()+86400000).toISOString(),owner=data.reviewers[0].user_id;
  document.querySelector('#content')!.innerHTML=`<section class="card quick-report"><div class="row"><h2>${escape(definition.label)}</h2><button type="button" class="secondary" id="change-report">Change type</button></div><form id="report-form">${definition.fields.map(reportField).join('')}<p id="urgent-report" class="urgent-report" role="alert" hidden>Alert the pharmacist immediately. Submitting this report does not contact them or emergency services.</p><details class="report-more"><summary>Add more detail</summary><label><span id="notes-label">Notes (optional)</span><textarea name="note" maxlength="2000" rows="3" placeholder="Keep patient names and identifiers in your clinical system."></textarea></label><button type="button" class="secondary" id="dictate" hidden>Dictate note</button><p id="dictation-status" role="status"></p><label>Occurred<input type="datetime-local" name="occurred" value="${occurred}" required></label></details><p class="report-routing">Review assigned to ${escape(data.reviewers[0].display_name)}.</p><p id="save-status" role="status"></p><button id="submit-report">Submit report</button></form></section>`;
  document.querySelector('#change-report')!.addEventListener('click',()=>{retry=null;screen='list';render();});
@@ -153,7 +161,7 @@ function newReport(pushHistory=true,type='Near miss'){
 }
 async function viewReport(id:string,pushHistory=true){
  const r=data.reports.find((r:any)=>r.id===id);if(!r)return;
- if(pushHistory)remember();screen='detail';recordId=id;renderNavigation();
+ if(pushHistory)remember();screen='detail';recordId=id;hideReportContext();renderNavigation();
  document.querySelector('#content')!.innerHTML=`<article class="card"><small>${escape(r.type)} · Report ${escape(r.id)}</small><h2>${escape(r.title)}</h2><p class="detail">${escape(r.detail)}</p><p>Occurred ${escape(stamp(r.occurred_at))}</p><p>Reviewer: ${escape(r.owner_name)} · ${escape(r.status)}</p>${r.resolution?`<h3>Review notes</h3><p class="detail">${escape(r.resolution)}</p>`:''}${data.role!=='staff'&&r.status!=='Closed'?`<form id="review-form"><label>Status<select name="status">${['Open','Awaiting review','Closed'].map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}</select></label><label>Review notes<textarea name="resolution" maxlength="4000">${escape(r.resolution)}</textarea></label><button>Save review</button></form>`:''}<div class="toolbar"><button class="secondary" id="back">Back</button></div><h3>History</h3><div id="history">Loading history…</div></article>`;
  document.querySelector('#back')!.addEventListener('click',goBack);
  document.querySelector('#review-form')?.addEventListener('submit',async e=>{
