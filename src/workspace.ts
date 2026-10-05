@@ -1,3 +1,4 @@
+import {renderSops,resetSops,sopsBack} from './sops-ui';
 import {renderTraining,resetTraining,trainingBack} from './training-ui';
 import {renderChecks,resetChecks,clearChecks,checksBack} from './checks-ui';
 import { login,logout,getUser,handleAuthCallback,acceptInvite,updateUser,requestPasswordRecovery } from '@netlify/identity';
@@ -20,7 +21,7 @@ async function api(path:string,options:RequestInit={}){
 const stamp=(v:string)=>new Date(v).toLocaleString('en-IE',{dateStyle:'medium',timeStyle:'short'});
 const local=(d:Date)=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
 function signIn(error=''){
- clearChecks();resetTraining();
+ clearChecks();resetTraining();resetSops();
  account.innerHTML='';document.querySelector('#navigation-root')?.remove();document.querySelector('#overlay-root')?.remove();menuOpen=false;askOpen=false;askMessages=[];pageHistory.length=0;screen='list';root.innerHTML=`<section class="card login"><h1>Sign in</h1><p class="muted">Your pharmacy workspace.</p><form id="login"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><p class="error" id="login-error">${escape(error)}</p><button>Sign in</button> <button type="button" id="forgot" class="secondary">Reset password</button><div class="toolbar"><button type="button" id="accept-invitation" class="secondary">Accept invitation</button></div></form></section>`;
  document.querySelector('#login')!.addEventListener('submit',async e=>{
   e.preventDefault();const form=e.target as HTMLFormElement,button=form.querySelector('button')!;button.disabled=true;
@@ -48,7 +49,7 @@ async function start(){
  await refresh();
 }
 async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));screen='list';render();}
-const APP_VERSION='1.05.10.26.9';
+const APP_VERSION='1.05.10.26.10';
 const roleLabel=(role:string)=>({'staff':'Staff','manager':'Pharmacist','superintendent':'Organisation admin'}[role]||role);
 function render(){
  const site=pharmacies.find(p=>p.id===pharmacyId),organisation=organisations.find(o=>o.id===organisationId),accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
@@ -60,7 +61,7 @@ function render(){
  const trigger=document.querySelector('#profile-trigger');trigger?.setAttribute('aria-expanded',String(profileOpen));
  document.querySelector('#profile-panel')?.remove();
  account.insertAdjacentHTML('beforeend',`<section id="profile-panel" class="profile-panel" ${profileOpen?'':'hidden'} aria-label="Profile settings"><h2>${escape(site.display_name)}</h2><label>Organisation<select id="organisation">${organisations.map(o=>`<option value="${escape(o.id)}" ${o.id===organisationId?'selected':''}>${escape(o.name)}</option>`).join('')}</select></label><label>Site<select id="pharmacy">${accessibleSites.map(p=>`<option value="${escape(p.id)}" ${p.id===pharmacyId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label><label>Role<select id="role">${roles.map(r=>`<option value="${r}" ${r===(viewRole||site.role)?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></label><button id="logout" class="secondary">Sign out</button><small class="profile-version">PharmaTap Version ${APP_VERSION}</small></section>`);
- root.innerHTML=`${['home','reports','checks','learning'].includes(tab)?'':`<div class="site-context"><span>${escape(organisation.name)} · ${escape(site.name)}</span><small>${escape(roleLabel(data.role))}</small></div>`}${!['reports','actions'].includes(tab)?'':`<h1>${tab==='actions'?'My Actions':'Reports'}</h1>${tab==='reports'&&screen==='list'&&data.role!=='staff'?`<div class="report-switch" role="group" aria-label="Reports view"><button data-report-mode="report" aria-pressed="${reportMode==='report'}">Report</button><button data-report-mode="view" aria-pressed="${reportMode==='view'}">View reports</button></div>`:''}${tab==='actions'||(reportMode==='view'&&data.role!=='staff')?`<div class="toolbar"><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div>`:''}`}<section id="content"></section>`;
+ root.innerHTML=`${['home','reports','checks','learning','sops'].includes(tab)?'':`<div class="site-context"><span>${escape(organisation.name)} · ${escape(site.name)}</span><small>${escape(roleLabel(data.role))}</small></div>`}${!['reports','actions'].includes(tab)?'':`<h1>${tab==='actions'?'My Actions':'Reports'}</h1>${tab==='reports'&&screen==='list'&&data.role!=='staff'?`<div class="report-switch" role="group" aria-label="Reports view"><button data-report-mode="report" aria-pressed="${reportMode==='report'}">Report</button><button data-report-mode="view" aria-pressed="${reportMode==='view'}">View reports</button></div>`:''}${tab==='actions'||(reportMode==='view'&&data.role!=='staff')?`<div class="toolbar"><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div>`:''}`}<section id="content"></section>`;
  const content=document.querySelector('#content')!;
  const records=tab==='actions'?data.reports.filter((r:any)=>r.owner_id===userId&&r.status!=='Closed'):data.reports;
  content.innerHTML=records.map((r:any)=>`<article class="card"><div class="row"><div><small>${escape(r.type)} · ${escape(stamp(r.created_at))}</small><h2>${escape(r.title)}</h2></div><span class="pill ${r.status!=='Closed'&&Date.parse(r.due_at)<Date.now()?'overdue':''}">${escape(r.status)}</span></div><p class="muted">Reviewer: ${escape(r.owner_name)} · Due ${escape(stamp(r.due_at))}</p><button class="secondary" data-record="${escape(r.id)}">View report</button></article>`).join('')||'<section class="card"><h2>All clear</h2><p>No records in this view.</p></section>';
@@ -74,10 +75,11 @@ function render(){
  if(tab==='home'){
   const icons=['M12 5v14M5 12h14','M4 4h6l2 2 2-2h6v16h-6l-2 2-2-2H4zM12 6v16','M5 3h14v18H5zM8 11l2 2 5-5','M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-4 4-4-4z','M5 5h14M5 12h14M5 19h14','M3 8l9-5 9 5-9 5zM6 10v7l6 4 6-4v-7'];
   content.innerHTML='<h1 class="sr-only">Home</h1><section class="home-tasks" aria-label="Pharmacy tasks">'+[['Report','Medication errors|and near misses','report'],['SOPs','Find and read|procedures','sops'],['Checks','Record daily|pharmacy checks','checks'],['Faults','Equipment or|premises issues','faults'],['Actions','View tasks and|due dates','actions'],['Training','Courses and|SOP updates','training']].map(([title,description,target],i)=>`<button class="home-task" data-task="${target}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[i]}"/></svg><strong>${title}</strong><span>${description.split('|').map(escape).join('<br>')}</span></button>`).join('')+'</section>';
-  document.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click',()=>{const task=(el as HTMLElement).dataset.task!;if(task==='sops'){message('This module is awaiting implementation.');return;}navigate(task==='training'?'learning':task==='checks'?'checks':task==='actions'?'actions':'reports');if(task==='faults')newReport(true,'Maintenance');}));
+  document.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click',()=>{const task=(el as HTMLElement).dataset.task!;navigate(task==='sops'?'sops':task==='training'?'learning':task==='checks'?'checks':task==='actions'?'actions':'reports');if(task==='faults')newReport(true,'Maintenance');}));
  }
  if(!['home','reports','actions'].includes(tab)){const titles:Record<string,string>={sops:'SOP Library',checks:'Checks',maintenance:'Maintenance',learning:'Training',recalls:'Recalls',inspections:'Inspections'};content.innerHTML=tab==='maintenance'?'<section class="card"><h2>Maintenance</h2><p>Record equipment or premises issues and assign a reviewer.</p><button id="maintenance-report">Report a fault</button></section>':`<section class="card"><h2>${titles[tab]}</h2><p>This module is awaiting implementation.</p></section>`;document.querySelector('#maintenance-report')?.addEventListener('click',()=>{navigate('reports');newReport(true,'Maintenance');});}
  if(tab==='checks')renderChecks(content,{organisationId,siteId:pharmacyId,role:data.role,sites:accessibleSites,report:()=>navigate('reports')});
+ if(tab==='sops')renderSops(content,{organisationId,siteId:pharmacyId,role:data.role,api});
  if(tab==='learning')renderTraining(content,{organisationId,siteId:pharmacyId,role:data.role});
  if(tab==='reports'&&(reportMode==='report'||data.role==='staff'))reportTiles();
  renderNavigation();
@@ -94,12 +96,13 @@ function icon(name:string){return `<svg class="icon" viewBox="0 0 24 24" aria-hi
 function remember(){pageHistory.push({tab,screen,recordId,reportMode,reportType:selectedReportType});}
 function closeProfile(){profileOpen=false;document.querySelector('#profile-panel')?.setAttribute('hidden','');document.querySelector('#profile-trigger')?.setAttribute('aria-expanded','false');}
 function navigate(to:string){
- resetChecks();resetTraining();
+ resetChecks();resetTraining();resetSops();
  if(to!==tab||screen!=='list')remember();tab=to;reportMode='report';screen='list';menuOpen=false;askOpen=false;closeProfile();navChoice=to==='home'?'home':'menu';render();window.scrollTo({top:0,behavior:'instant'});
 }
 function goBack(){
  if(askOpen||menuOpen){askOpen=false;menuOpen=false;renderNavigation();return;}
  if(tab==='checks'&&checksBack()){render();return;}
+ if(tab==='sops'&&sopsBack()){render();return;}
  if(tab==='learning'&&trainingBack()){render();return;}
  const previous=pageHistory.pop();if(!previous)return;
  tab=previous.tab;recordId=previous.recordId;reportMode=previous.reportMode;selectedReportType=previous.reportType;screen='list';navChoice='back';closeProfile();render();

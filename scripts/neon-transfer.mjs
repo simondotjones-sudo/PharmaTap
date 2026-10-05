@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-export const tables=['organisations','pharmacies','memberships','organisation_memberships','installation_authorisation','installation_setup','reports','report_photos','actions','audit_events'];
+export const tables=['organisations','pharmacies','memberships','organisation_memberships','installation_authorisation','installation_setup','reports','report_photos','actions','sop_drafts','audit_events'];
 const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 const digest=rows=>createHash('sha256').update(JSON.stringify(rows.map(canonical).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))))).digest('hex');
 export async function applyMigrations(db,migrations){
@@ -28,8 +28,9 @@ export async function transferDatabase(source,target,migrations){
   await target.query('DELETE FROM pharmacies');await target.query('DELETE FROM organisations');await target.query('DELETE FROM installation_authorisation');
   const manifest={};
   for(const table of tables){
-   const rows=(await source.query(`SELECT to_jsonb(t) AS value FROM ${table} t`)).rows.map(r=>r.value);
-   for(const row of rows){const columns=Object.keys(row);const values=columns.map(c=>table==='report_photos'&&c==='data'&&typeof row[c]==='string'&&row[c].startsWith('\\x')?Buffer.from(row[c].slice(2),'hex'):row[c]);await target.query(`INSERT INTO ${table} (${columns.map(c=>'"'+c+'"').join(',')}) ${table==='audit_events'?'OVERRIDING SYSTEM VALUE':''} VALUES (${values.map((_,i)=>'$'+(i+1)).join(',')})`,values);}
+   const exists=table==='sop_drafts'?(await source.query("SELECT to_regclass('public.sop_drafts') AS name")).rows[0].name:true;
+   const rows=exists?(await source.query(`SELECT to_jsonb(t) AS value FROM ${table} t`)).rows.map(r=>r.value):[];
+   for(const row of rows){const columns=Object.keys(row);const values=columns.map(c=>((table==='report_photos'&&c==='data')||(table==='sop_drafts'&&c==='pdf'))&&typeof row[c]==='string'&&row[c].startsWith('\\x')?Buffer.from(row[c].slice(2),'hex'):row[c]);await target.query(`INSERT INTO ${table} (${columns.map(c=>'"'+c+'"').join(',')}) ${table==='audit_events'?'OVERRIDING SYSTEM VALUE':''} VALUES (${values.map((_,i)=>'$'+(i+1)).join(',')})`,values);}
    const restored=(await target.query(`SELECT to_jsonb(t) AS value FROM ${table} t`)).rows.map(r=>r.value);
    if(rows.length!==restored.length||digest(rows)!==digest(restored))throw new Error('Transferred data verification failed: '+table);
    manifest[table]={count:rows.length,checksum:digest(rows)};

@@ -1,3 +1,4 @@
+import {sopList,sopCreate,sopPdf} from './_shared/sops';
 import type { Config } from '@netlify/functions';
 import { getUser } from '@netlify/identity';
 import {workspaceDatabase} from './_shared/database';
@@ -31,6 +32,16 @@ export default async (req:Request) => {
   else if(req.method==='GET'&&/^\/reports\/[^/]+\/photo$/.test(path)){
    const photo=await reportPhoto(client,actor,path.split('/')[2]);await client.query('COMMIT');
    return new Response(new Uint8Array(photo.data),{headers:{'Content-Type':photo.content_type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="maintenance-photo.jpg"'}});
+  }
+  else if(req.method==='GET'&&path==='/sops')result=await sopList(client,actor,url.searchParams.get('pharmacyId')||'');
+  else if(req.method==='POST'&&path==='/sops'){
+   const raw=await req.text();if(raw.length>2900000)throw new Fault(413,'SOP is too large.');
+   let body;try{body=JSON.parse(raw);}catch{throw new Fault(400,'Invalid JSON.');}
+   result=await sopCreate(client,actor,body);
+  }
+  else if(req.method==='GET'&&/^\/sops\/[^/]+\/pdf$/.test(path)){
+   const pdf=await sopPdf(client,actor,path.split('/')[2]);await client.query('COMMIT');
+   return new Response(new Uint8Array(pdf),{headers:{'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="supplier-sop.pdf"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   }
   else if(req.method==='POST'&&path==='/reports'){
    const raw=await req.text();if(raw.length>1450000)throw new Fault(413,'Report is too large.');
