@@ -1,3 +1,7 @@
+# Development update — 5 October 2026
+
+A separate server-backed workspace is now implemented on the working-foundation development branch. See `WORKING-SYSTEM.md` for delivered scope, validation, preview activation and outstanding live-service gates. The assurance extension described below remains prototype-only.
+
 # PharmaTap live-service requirements
 
 The assurance extension is a browser-only prototype. None of the sample SOPs or review packs is an approved Stacks procedure or a complete regulatory assessment. No patient or real pharmacy records should be entered.
