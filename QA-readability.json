@@ -1,0 +1,17 @@
+{
+  "passed": 10,
+  "checks": [
+    "Bundled medium body font, darker ink and confirmed first-aid green",
+    "All navigation pages render without overflow at 1440px in all three roles",
+    "All navigation pages render without overflow at 390px in all three roles",
+    "All navigation pages render without overflow at 320px in all three roles",
+    "Shortened report wizard saves and persists a near-miss record",
+    "SOP search and detailed instructions remain available",
+    "Temperature excursion still saves and creates review action",
+    "Assistant opens, accepts a question and shows a response",
+    "Standalone product map updated and fits mobile",
+    "No browser runtime errors"
+  ],
+  "errors": [],
+  "completed": "2026-10-05T12:36:12.907Z"
+}
