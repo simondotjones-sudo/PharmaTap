@@ -1,6 +1,8 @@
 import {sopList,sopCreate,sopPdf} from './_shared/sops';
 import type { Config } from '@netlify/functions';
-import { getUser } from '@netlify/identity';
+import {randomBytes} from 'node:crypto';
+import {manageList,addSite,addUser} from './_shared/manage';
+import { admin,getUser } from '@netlify/identity';
 import {workspaceDatabase} from './_shared/database';
 import {initialiseApprovedAdministrator} from './_shared/installation';
 import { Fault,session,list,createReport,updateAction,history,exportPharmacy,reportPhoto } from './_shared/service';
@@ -26,6 +28,15 @@ export default async (req:Request) => {
   let result;
   if(req.method==='GET'&&path==='/session')result=await session(client,actor);
   else if(req.method==='POST'&&path==='/initialise')result=await initialiseApprovedAdministrator(client,actor);
+  else if(req.method==='GET'&&path==='/manage')result=await manageList(client,actor,url.searchParams.get('organisationId')||'');
+  else if(req.method==='POST'&&['/manage/sites','/manage/users'].includes(path)){
+   const raw=await req.text();if(raw.length>20000)throw new Fault(413,'Request is too large.');
+   let body;try{body=JSON.parse(raw);}catch{throw new Fault(400,'Invalid JSON.');}
+   result=path.endsWith('/sites')?await addSite(client,actor,body):await addUser(client,actor,body,async(email,name)=>{
+    for(let page=1;page<=100;page++){const users=await admin.listUsers({page,perPage:100});const existing=users.find(u=>u.email?.toLowerCase()===email);if(existing)return existing.id;if(users.length<100)return (await admin.createUser({email,password:randomBytes(48).toString('base64url'),data:{user_metadata:{full_name:name}}})).id;}
+    throw new Fault(503,'User lookup could not be completed.');
+   });
+  }
   else if(req.method==='GET'&&path==='/reports')result=await list(client,actor,url.searchParams.get('pharmacyId')||'');
   else if(req.method==='GET'&&path==='/export')result=await exportPharmacy(client,actor,url.searchParams.get('pharmacyId')||'');
   else if(req.method==='GET'&&/^\/reports\/[^/]+\/history$/.test(path))result=await history(client,actor,path.split('/')[2]);
