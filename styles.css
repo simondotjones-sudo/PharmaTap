@@ -78,3 +78,7 @@
 @media(max-width:760px){.assurance-list .row{flex-wrap:wrap}.assurance-list .row-content{flex-basis:60%}.assurance-question{padding:12px}.assurance-list .badge{max-width:110px}}
 
 .topbar-bell{width:40px;height:40px;display:grid;place-items:center;background:transparent;color:var(--ink);border-radius:50%;flex-shrink:0}.topbar-bell:hover{background:var(--light)}.profile-controls{display:flex;align-items:center;gap:12px}.topbar-bell .icon{width:23px;height:23px}
+
+.topbar-bell{position:relative}.action-count{position:absolute;top:0;right:-2px;display:grid;place-items:center;min-width:19px;height:19px;padding:0 4px;border-radius:999px;background:#c62c35;color:#fff;border:2px solid #fff;font-size:11px;font-weight:700;line-height:1;pointer-events:none}
+.ask-backdrop{position:fixed;inset:0;background:rgba(18,35,27,.38);backdrop-filter:blur(3px);z-index:41}.ask-panel{z-index:50;background:#fff;border:1px solid #a9bdb0;box-shadow:0 24px 80px rgba(13,37,24,.34),0 4px 18px rgba(13,37,24,.2)}.ask-header{background:#e3f0e7;border-bottom:1px solid #bdcfbf}.ask-header .close{background:#fff;color:#314b3b}.ask-feed,.ask-form{background:#fff}
+@media print{.ask-backdrop{display:none!important}}
