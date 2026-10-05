@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import {reportTypes,reportDetail} from '../../../src/report-types';
 export type Actor = { id: string; viewRole?: string };
 export type DB = { query: (sql: string, params?: any[]) => Promise<{rows: any[]}> };
 export class Fault extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -24,14 +25,22 @@ export async function session(db:DB,actor:Actor){
 export async function list(db:DB,actor:Actor,pharmacy:string){
  const m=await membership(db,actor,pharmacy);
  const reports=await db.query(`SELECT r.*,a.id AS action_id,a.status,a.owner_id,a.due_at,a.resolution,a.version,m.display_name AS owner_name FROM reports r JOIN actions a ON a.report_id=r.id JOIN memberships m ON m.user_id=a.owner_id AND m.pharmacy_id=a.pharmacy_id WHERE r.pharmacy_id=$1 AND ($2 OR r.created_by=$3 OR a.owner_id=$3) ORDER BY r.created_at DESC`,[pharmacy,m.role!=='staff',actor.id]);
- const reviewers=await db.query("SELECT user_id,display_name FROM memberships WHERE pharmacy_id=$1 AND active=true AND role IN ('manager','superintendent') ORDER BY display_name",[pharmacy]);
+ const reviewers=await db.query("SELECT user_id,display_name FROM memberships WHERE pharmacy_id=$1 AND active=true AND role IN ('manager','superintendent') ORDER BY CASE role WHEN 'manager' THEN 0 ELSE 1 END,display_name,user_id",[pharmacy]);
  return {reports:reports.rows,reviewers:reviewers.rows,role:m.role};
 }
 export async function createReport(db:DB,actor:Actor,input:any,key:string){
  if(!input||typeof input!=='object'||Array.isArray(input))fail(400,'Invalid report.');
  const pharmacy=uuid(input.pharmacyId); await membership(db,actor,pharmacy); uuid(key);
  const type=text(input.type,3,40,'Report type');
- if(!['Near miss','Medication error','Complaint','Safety concern','Maintenance'].includes(type))fail(400,'Invalid report type.');
+ if(!reportTypes.some(t=>t.type===type))fail(400,'Invalid report type.');
+ if(input.answers!==undefined){
+  if(!input.answers||typeof input.answers!=='object'||Array.isArray(input.answers))fail(400,'Invalid report answers.');
+  const definition=reportTypes.find(t=>t.type===type)!;
+  const answers:Record<string,string>={};
+  for(const field of definition.fields){const value=text(input.answers[field.id],field.optional?0:1,200,field.label);if(field.options&&!field.options.includes(value))fail(400,'Choose a valid '+field.label.toLowerCase()+'.');answers[field.id]=value;}
+  const note=text(input.note??'',Object.values(answers).includes('Other')?1:0,2000,'Additional detail');
+  input={...input,title:(type+' · '+(answers.medicine||answers.issue||answers.area||'New report')).slice(0,160),detail:reportDetail(definition,answers,note)};
+ }
  const title=text(input.title,3,160,'Title'),detail=text(input.detail,10,4000,'Details');
  const occurred=date(input.occurredAt,'occurrence time'),due=date(input.dueAt,'due time'),owner=text(input.ownerId,1,128,'Reviewer');
  if(Date.parse(occurred)>Date.now()+60000)fail(400,'Occurrence time cannot be in the future.');
