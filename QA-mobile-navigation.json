@@ -1,0 +1,14 @@
+{
+  "passed": 7,
+  "checks": [
+    "Back restores search; Home/Menu/Ask work in centred four-button pill at 320px",
+    "Back restores search; Home/Menu/Ask work in centred four-button pill at 390px",
+    "Back restores search; Home/Menu/Ask work in centred four-button pill at 760px",
+    "Sliding highlight animates between controls and respects reduced motion",
+    "Back from a fresh deep link returns home within the app",
+    "Desktop keeps its existing sidebar",
+    "No browser runtime errors"
+  ],
+  "errors": [],
+  "completed": "2026-10-05T13:38:21.169Z"
+}
