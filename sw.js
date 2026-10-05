@@ -1,4 +1,4 @@
-const CACHE = 'pharmatap-offline-v1';
+const CACHE = 'pharmatap-offline-v2';
 const OFFLINE = '/offline.html';
 
 self.addEventListener('install', event => {

@@ -17,6 +17,7 @@ test('working workspace keeps navigation, bell, profile and report drafts togeth
  assert.equal(document.querySelectorAll('.mobile-navigation button').length,4);
  assert.equal(document.querySelectorAll('.home-task').length,6);
  assert.equal(document.querySelector('.site-context'),null);
+ assert.equal(document.querySelector('.profile-version')?.textContent,'PharmaTap Version 1.05.10.26.2');
  assert.equal(document.querySelector('#action-bell .action-count')?.textContent,'2');
  click('#action-bell');assert.equal(document.querySelector('h1')?.textContent,'My Actions');assert.equal(document.querySelectorAll('[data-record]').length,2);
  click('[data-nav-action=back]');assert.equal(document.querySelectorAll('.home-task').length,6);
