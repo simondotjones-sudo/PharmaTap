@@ -6,7 +6,7 @@ const { chromium }=require(require.resolve('playwright',{paths:process.env.CODEX
 const output=process.env.PHARMATAP_TEST_OUTPUT||'.netlify/ui-smoke';await mkdir(output,{recursive:true});
 const browser=await chromium.launch({headless:true,...(process.env.PHARMATAP_TEST_BROWSER?{executablePath:process.env.PHARMATAP_TEST_BROWSER}:{}),args:['--no-sandbox']});
 const site='11111111-1111-4111-8111-111111111111',report='22222222-2222-4222-8222-222222222222',action='33333333-3333-4333-8333-333333333333';
-let records=[],keys=[],failNext=true;
+let records=[],keys=[],failNext=true,checkRecords=[],checkKeys=[],failChecklist=true;
 const ctx=await browser.newContext({viewport:{width:390,height:844}}),page=await ctx.newPage();
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 await page.route('https://pharmatap.test/**',async route=>{
@@ -21,6 +21,11 @@ await page.route('https://pharmatap.test/**',async route=>{
   keys.push(request.headers()['idempotency-key']);if(failNext){failNext=false;return json({error:'Temporary service error'},503);}
   const body=request.postDataJSON();records=[{...body,id:report,action_id:action,title:body.type+' · '+(body.answers.medicine||body.answers.area||'New report'),type:body.type,detail:JSON.stringify(body.answers),has_photo:Boolean(body.photo),created_at:new Date().toISOString(),occurred_at:body.occurredAt,due_at:body.dueAt,created_by:'manager',owner_id:'manager',owner_name:'Test Manager',status:'Open',resolution:'',version:1}];return json({id:report});
  }
+ if(path==='/api/workspace/checklists'&&request.method()==='POST'){
+  checkKeys.push(request.headers()['idempotency-key']);if(failChecklist){failChecklist=false;return json({error:'Temporary save failure'},503);}
+  const body=request.postDataJSON();checkRecords=[{...body,check_id:body.checkId,title:'Fridge Temperature Log',created_at:new Date().toISOString(),completed_by:'Test Manager',failures:1,questions:[{id:'q1',label:'Temperature readings',fields:[{id:'area',label:'Fridge name'},{id:'current',label:'Current °C'},{id:'minimum',label:'Minimum °C'},{id:'maximum',label:'Maximum °C'}]},{id:'q2',label:'Were all readings in range?'}]}];return json({id:report});
+ }
+ if(path==='/api/workspace/checklists')return json({records:checkRecords});
  if(path==='/api/workspace/reports')return json({reports:records,reviewers:[{user_id:'manager',display_name:'Test Manager'}],role:request.headers()['x-pharmatap-role']||'manager'});
  if(path.endsWith('/photo'))return route.fulfill({contentType:'image/jpeg',body:Buffer.from(records[0].photo,'base64')});
  if(path.endsWith('/history'))return json([{event:'report.created',actor_id:'manager',created_at:new Date().toISOString()}]);
@@ -34,6 +39,15 @@ try{
  await page.locator('[data-task=checks]').click();
  assert.equal(await page.locator('[data-check-open]').count(),9);
  await page.screenshot({path:output+'/checks-mobile.png',fullPage:true});
+ await page.locator('[data-check-open="check-1"]').click();
+ await page.getByLabel('Fridge name',{exact:true}).fill('Dispensary fridge');await page.getByLabel('Current °C',{exact:true}).fill('4');await page.getByLabel('Minimum °C',{exact:true}).fill('3');await page.getByLabel('Maximum °C',{exact:true}).fill('9');
+ await page.locator('[data-add-row=q1]').click();const second=page.locator('[data-question=q1]').nth(1);await second.locator('[data-field=area]').fill('Vaccines fridge');await second.locator('[data-field=current]').fill('5');await second.locator('[data-field=minimum]').fill('2');await second.locator('[data-field=maximum]').fill('8');
+ for(const q of ['q2','q3','q4','q5','q6'])await page.locator('input[name='+q+'][value=Yes]').check();
+ await page.locator('#check-submit').click();await page.getByText('A temperature is out of range.',{exact:false}).waitFor();assert.equal(checkKeys.length,0);
+ await page.locator('input[name=q2][value=No]').check();await page.locator('[name=note-q2]').fill('Stock quarantined and pharmacist notified.');
+ await page.screenshot({path:output+'/fridge-check-mobile.png',fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.locator('#check-submit').click();await page.getByText('Temporary save failure',{exact:true}).waitFor();await page.locator('#check-submit').click();await page.getByText('Checklist saved',{exact:true}).waitFor();assert.equal(checkKeys.length,2);assert.equal(checkKeys[0],checkKeys[1]);await page.locator('.check-saved').waitFor();await page.locator('.check-saved summary').click();await page.getByText('Stock quarantined and pharmacist notified.',{exact:false}).waitFor();
+ await page.locator('[data-check-back]').click();
  await page.locator('[data-check-mode=manage]').click();await page.screenshot({path:output+'/manage-mobile.png',fullPage:true});
  for(const frequency of ['Daily','Weekly','Monthly','Quarterly','Twice yearly','Annual']){
  await page.locator('[data-check-frequency="'+frequency+'"]').click();

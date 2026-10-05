@@ -51,7 +51,7 @@ async function start(){
  await refresh();
 }
 async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));screen='list';render();}
-const APP_VERSION='1.05.10.26.11';
+const APP_VERSION='1.05.10.26.12';
 const roleLabel=(role:string)=>({'staff':'Staff','manager':'Pharmacist','superintendent':'Organisation admin'}[role]||role);
 function render(){
  const site=pharmacies.find(p=>p.id===pharmacyId),organisation=organisations.find(o=>o.id===organisationId),accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
@@ -82,7 +82,7 @@ function render(){
  }
  if(!['home','reports','actions'].includes(tab)){const titles:Record<string,string>={sops:'SOP Library',checks:'Checks',maintenance:'Maintenance',learning:'Training',recalls:'Recalls',inspections:'Inspections'};content.innerHTML=tab==='maintenance'?'<section class="card"><h2>Maintenance</h2><p>Record equipment or premises issues and assign a reviewer.</p><button id="maintenance-report">Report a fault</button></section>':`<section class="card"><h2>${titles[tab]}</h2><p>This module is awaiting implementation.</p></section>`;document.querySelector('#maintenance-report')?.addEventListener('click',()=>{navigate('reports');newReport(true,'Maintenance');});}
  if(tab==='manage'){if(data.role!=='superintendent'||organisation.role!=='admin'){content.innerHTML='<h1>Manage</h1><p>Organisation admin access is required.</p>';}else void renderManage(content,{organisationId,api,updated:async()=>{const result=await api('/session');pharmacies=result.pharmacies;organisations=result.organisations;const selector=document.querySelector<HTMLSelectElement>('#pharmacy');if(selector)selector.innerHTML=pharmacies.filter(p=>p.organisation_id===organisationId).map(p=>`<option value="${escape(p.id)}" ${p.id===pharmacyId?'selected':''}>${escape(p.name)}</option>`).join('');}});}
- if(tab==='checks')renderChecks(content,{organisationId,siteId:pharmacyId,role:data.role,sites:accessibleSites,report:()=>navigate('reports')});
+ if(tab==='checks')renderChecks(content,{organisationId,siteId:pharmacyId,role:data.role,sites:accessibleSites,report:()=>navigate('reports'),api});
  if(tab==='sops')renderSops(content,{organisationId,siteId:pharmacyId,role:data.role,api});
  if(tab==='learning')renderTraining(content,{organisationId,siteId:pharmacyId,role:data.role});
  if(tab==='reports'&&(reportMode==='report'||data.role==='staff'))reportTiles();

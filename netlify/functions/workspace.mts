@@ -1,3 +1,4 @@
+import {checklistList,checklistCreate} from './_shared/checklists';
 import {sopList,sopCreate,sopPdf} from './_shared/sops';
 import type { Config } from '@netlify/functions';
 import {randomBytes} from 'node:crypto';
@@ -36,6 +37,12 @@ export default async (req:Request) => {
     for(let page=1;page<=100;page++){const users=await admin.listUsers({page,perPage:100});const existing=users.find(u=>u.email?.toLowerCase()===email);if(existing)return existing.id;if(users.length<100)return (await admin.createUser({email,password:randomBytes(48).toString('base64url'),data:{user_metadata:{full_name:name}}})).id;}
     throw new Fault(503,'User lookup could not be completed.');
    });
+  }
+  else if(req.method==='GET'&&path==='/checklists')result=await checklistList(client,actor,url.searchParams.get('pharmacyId')||'');
+  else if(req.method==='POST'&&path==='/checklists'){
+   const raw=await req.text();if(raw.length>200000)throw new Fault(413,'Checklist is too large.');
+   let body;try{body=JSON.parse(raw);}catch{throw new Fault(400,'Invalid JSON.');}
+   result=await checklistCreate(client,actor,body,req.headers.get('idempotency-key')||'');
   }
   else if(req.method==='GET'&&path==='/reports')result=await list(client,actor,url.searchParams.get('pharmacyId')||'');
   else if(req.method==='GET'&&path==='/export')result=await exportPharmacy(client,actor,url.searchParams.get('pharmacyId')||'');
