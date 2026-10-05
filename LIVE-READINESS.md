@@ -1,3 +1,7 @@
+# Working system update — 5 October 2026
+
+The authenticated working foundation, Demo and Stacks Pharmacies organisation catalogue, and administrator setup are implemented. See `WORKING-SYSTEM.md` for exact scope and validation. Simon has explicitly authorised the main deployment. The assurance/SOP/check modules described below remain prototype-only.
+
 # PharmaTap live-service requirements
 
 The assurance extension is a browser-only prototype. None of the sample SOPs or review packs is an approved Stacks procedure or a complete regulatory assessment. No patient or real pharmacy records should be entered.
