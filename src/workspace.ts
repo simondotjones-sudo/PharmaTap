@@ -45,7 +45,7 @@ async function start(){
  await refresh();
 }
 async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));screen='list';render();}
-const APP_VERSION='1.05.10.26.6';
+const APP_VERSION='1.05.10.26.7';
 const roleLabel=(role:string)=>({'staff':'Staff','manager':'Pharmacist','superintendent':'Organisation admin'}[role]||role);
 function render(){
  const site=pharmacies.find(p=>p.id===pharmacyId),organisation=organisations.find(o=>o.id===organisationId),accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
@@ -84,7 +84,7 @@ async function switchSite(id:string){
  retry=null;pageHistory.length=0;askMessages=[];menuOpen=false;askOpen=false;screen='list';reportMode='report';closeProfile();document.querySelector('#navigation-root')?.remove();document.querySelector('#overlay-root')?.remove();data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening site…</p>';
  try{await refresh();}catch(e){root.innerHTML='<p>Could not open this site. Reload to try again.</p>';message((e as Error).message);}
 }
-const paths:Record<string,string>={back:'M19 12H5 M10 7l-5 5 5 5',home:'M3 10l9-7 9 7v10H3z M9 20v-7h6v7',menu:'M4 6h16 M4 12h16 M4 18h16',spark:'M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3z',bell:'M5 17h14l-2-3V8a5 5 0 0 0-10 0v6z M10 21h4',close:'M6 6l12 12 M18 6L6 18',prescription:'M8 4H5v17h14V4h-3 M8 2h8v5H8z M8 11h8 M8 15h5',medicine:'M8 3a5 5 0 0 0-5 5v8a5 5 0 0 0 10 0V8a5 5 0 0 0-5-5z M3 12h10 M17 8h4 M17 12h4 M17 16h4',shield:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z M8 12l3 3 5-6',refusal:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M6 6l12 12',warning:'M12 3L2 21h20z M12 9v5 M12 17v1',injury:'M9 3h6v6h6v6h-6v6H9v-6H3V9h6z',wrench:'M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-4 4-4-4z',security:'M6 10V8a6 6 0 0 1 12 0v2 M4 10h16v11H4z M12 14v3',complaint:'M3 4h18v13H8l-5 4z M7 8h10 M7 12h6',quality:'M5 3h14v18H5z M8 8h8 M12 12v3 M12 17v1',other:'M5 12h1 M11 12h1 M17 12h1'};
+const paths:Record<string,string>={back:'M19 12H5 M10 7l-5 5 5 5',home:'M3 10l9-7 9 7v10H3z M9 20v-7h6v7',menu:'M4 6h16 M4 12h16 M4 18h16',spark:'M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3z',bell:'M5 17h14l-2-3V8a5 5 0 0 0-10 0v6z M10 21h4',close:'M6 6l12 12 M18 6L6 18',prescription:'M8 4H5v17h14V4h-3 M8 2h8v5H8z M8 11h8 M8 15h5',medicine:'M8 3a5 5 0 0 0-5 5v8a5 5 0 0 0 10 0V8a5 5 0 0 0-5-5z M3 12h10 M17 8h4 M17 12h4 M17 16h4',shield:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z M8 12l3 3 5-6',refusal:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M6 6l12 12',warning:'M12 3L2 21h20z M12 9v5 M12 17v1',injury:'M9 3h6v6h6v6h-6v6H9v-6H3V9h6z',wrench:'M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-4 4-4-4z',security:'M6 10V8a6 6 0 0 1 12 0v2 M4 10h16v11H4z M12 14v3',complaint:'M3 4h18v13H8l-5 4z M7 8h10 M7 12h6',quality:'M5 3h14v18H5z M8 8h8 M12 12v3 M12 17v1',other:'M5 3h10l4 4v14H5z M15 3v5h4 M8 14h8 M12 10v8'};
 function icon(name:string){return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"/></svg>`;}
 function remember(){pageHistory.push({tab,screen,recordId,reportMode,reportType:selectedReportType});}
 function closeProfile(){profileOpen=false;document.querySelector('#profile-panel')?.setAttribute('hidden','');document.querySelector('#profile-trigger')?.setAttribute('aria-expanded','false');}
@@ -132,7 +132,7 @@ const reportTileTitles:Record<string,[string,string]>={
 };
 function hideReportContext(){document.querySelector('.site-context')?.remove();document.querySelector('.report-switch')?.remove();}
 function reportTiles(){
- document.querySelector('#content')!.innerHTML=`<section class="report-tiles" aria-label="Choose a report type">${reportTypes.map((t,i)=>t.type==='Maintenance'?'':`<button class="report-tile" data-report-type="${escape(t.type)}"><span class="report-tile-icon" aria-hidden="true">${icon(['prescription','medicine','shield','refusal','warning','injury','wrench','security','complaint','quality','other'][i])}</span><strong class="report-tile-title">${reportTileTitles[t.type].map(line=>`<span>${escape(line)}</span>`).join(' ')}</strong><span>${t.type==='Refusal of supply'?t.subtitle.split(', ').map(escape).join('<br>'):escape(t.subtitle)}</span></button>`).join('')}</section>`;
+ document.querySelector('#content')!.innerHTML=`<section class="report-tiles" aria-label="Choose a report type">${reportTypes.map((t,i)=>t.type==='Maintenance'?'':`<button class="report-tile" data-report-type="${escape(t.type)}"><span class="report-tile-icon" aria-hidden="true">${icon(['prescription','medicine','shield','refusal','warning','injury','wrench','security','complaint','quality','other'][i])}</span><strong class="report-tile-title">${reportTileTitles[t.type].map(line=>`<span>${escape(line)}</span>`).join(' ')}</strong><span>${t.type==='Refusal of supply'?t.subtitle.split(', ').map(escape).join('<br>'):t.type==='Medicine quality issue'?['Stock defects or','storage issues'].map(escape).join('<br>'):escape(t.subtitle)}</span></button>`).join('')}</section>`;
  document.querySelectorAll<HTMLElement>('[data-report-type]').forEach(el=>el.addEventListener('click',()=>newReport(true,el.dataset.reportType!)));
 }
 function reportField(field:ReportType['fields'][number]){
