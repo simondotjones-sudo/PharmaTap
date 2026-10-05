@@ -51,3 +51,20 @@
  .ask-fab{display:none}
  .ask-panel{bottom:calc(100px + env(safe-area-inset-bottom,0px));max-height:calc(100dvh - 120px - env(safe-area-inset-bottom,0px))}
 }
+
+.task-title{font-size:28px;font-weight:700}
+.task-description>span{display:block}
+@media(max-width:1150px){.task-title{font-size:26px}}
+@media(max-width:760px){.task-title{font-size:24px}.home-task{min-height:190px}}
+
+.topbar{position:relative;z-index:30}
+.topbar-brand{display:flex;align-items:center;gap:10px;background:transparent;color:var(--ink);font-size:23px;font-weight:700;letter-spacing:-.5px;padding:0;min-height:44px}
+.topbar-brand img{width:34px;height:34px}
+.profile-controls{position:relative}
+.topbar .profile-trigger{display:grid;width:44px;height:44px;border:1px solid #d7e7dc;background:var(--light);font-size:14px}
+.profile-panel{position:absolute;top:calc(100% + 12px);right:0;width:300px;max-width:calc(100vw - 32px);padding:22px;background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow)}
+.profile-panel[hidden]{display:none}
+.profile-heading{display:flex;align-items:center;justify-content:space-between}
+.topbar .profile-panel #role-select,.topbar .profile-panel #site-select{width:100%;max-width:none;background:#fff;border:1px solid var(--line);padding:11px 30px 11px 12px;font-size:15px}
+@media(max-width:760px){.topbar-brand{font-size:22px}.topbar-brand img{width:32px;height:32px}.profile-panel{padding:20px}}
+@media(max-width:360px){.home-task{padding:12px}}
