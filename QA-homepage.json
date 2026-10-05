@@ -1,0 +1,13 @@
+{
+  "passed": 6,
+  "checks": [
+    "Six homepage buttons and floating Ask work in all roles at 1440px without overflow",
+    "Six homepage buttons and floating Ask work in all roles at 768px without overflow",
+    "Six homepage buttons and floating Ask work in all roles at 390px without overflow",
+    "Six homepage buttons and floating Ask work in all roles at 320px without overflow",
+    "Recall callout appears only when the selected site needs a confirmed response",
+    "No browser runtime errors"
+  ],
+  "errors": [],
+  "completed": "2026-10-05T13:14:19.001Z"
+}
