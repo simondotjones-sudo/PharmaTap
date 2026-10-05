@@ -77,3 +77,5 @@ document.addEventListener('submit',e=>{
  else return;
  save('Assurance evidence saved: '+f.id.replace('assure-',''));closeModal();render();toast('Evidence saved in this demo.');
 });
+
+render();
