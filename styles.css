@@ -51,3 +51,8 @@
  .ask-fab{display:none}
  .ask-panel{bottom:calc(100px + env(safe-area-inset-bottom,0px));max-height:calc(100dvh - 120px - env(safe-area-inset-bottom,0px))}
 }
+
+.task-title{font-size:28px;font-weight:700}
+.task-description>span{display:block}
+@media(max-width:1150px){.task-title{font-size:26px}}
+@media(max-width:760px){.task-title{font-size:24px}.home-task{min-height:190px}}
