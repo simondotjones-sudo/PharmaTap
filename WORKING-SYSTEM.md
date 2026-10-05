@@ -56,3 +56,7 @@ The new workspace contains no fake AI responses, sample SOPs or compliance score
 ## Publication status
 
 Publication of the development branch and preview pull request was authorised on 5 October 2026. This increment is for preview validation. Production/main remains unchanged until an explicitly approved release.
+
+## Development administrator assignment
+
+A build-only setup step can assign the operator-selected Identity account to Skerries · Test pharmacy in PharmaTap Development. The account ID is supplied in the secret `PHARMATAP_PREVIEW_USER_ID` environment variable, scoped to preview builds; it is never committed or included in browser assets. The step runs only when `CONTEXT=deploy-preview` and `BRANCH=development/working-foundation`, verifies the assignment and rolls back on failure. It grants superintendent access to that one development pharmacy and creates no reports. Remove the variable after the initial assignment to avoid reactivating a later revoked account. Production and other preview branches skip this setup.
