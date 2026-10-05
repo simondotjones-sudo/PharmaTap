@@ -30,6 +30,7 @@ function invitationForm(){
 }
 async function start(){
  const user=await getUser();if(!user){signIn();return;}userId=user.id;
+ await api('/initialise',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
  const result=await api('/session');pharmacies=result.pharmacies;organisations=(result.organisations||[]).filter((o:any)=>pharmacies.some(p=>p.organisation_id===o.id));if(!organisations.length)organisations=[...new Map(pharmacies.map(p=>[p.organisation_id,{id:p.organisation_id,name:p.organisation_name,role:p.role}])).values()];
  account.innerHTML=`<span>${escape(user.name||user.email)}</span><button id="logout" class="secondary">Sign out</button>`;
  document.querySelector('#logout')!.addEventListener('click',async()=>{try{await logout();}finally{data={reports:[],reviewers:[],role:'staff'};retry=null;pharmacies=[];userId='';signIn();}});

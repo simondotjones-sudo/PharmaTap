@@ -21,15 +21,15 @@ No operational reports or approved SOPs are seeded into either organisation.
 
 ## Initial administrator setup
 
-The one-time protected `/api/setup` operation reads the intended administrator ID and an unguessable setup credential solely from function-scoped Netlify environment variables. The request cannot choose an account, role or organisation. It validates the credential, uses a single transaction, assigns organisation-admin and per-pharmacy reviewer memberships, writes assignment audit events, and queries back the resulting two organisations and all 18 memberships.
+The authenticated `/api/workspace/initialise` operation derives its account from Netlify's verified identity context. A deployment-managed database record contains a one-way fingerprint of the account explicitly selected by Simon; neither request parameters nor user-editable metadata can select an account or role. Unlisted accounts receive no access. The working app runs this account setup after sign-in before loading the session. It uses one transaction, assigns organisation-admin and per-pharmacy reviewer memberships, writes assignment audit events, and queries back both organisations and all 18 sites.
 
-A completion marker prevents repeated setup from silently restoring revoked access or changing the configured administrator. The operation is disabled (404) when its setup credential is removed. Credentials and account IDs are not committed or bundled into the browser. This replaces the earlier build-only preview provisioning, which did not establish verified access for Simon.
+A completion marker prevents repeated setup from restoring revoked access or switching the configured administrator. The one-way fingerprint does not reveal an invitation token, password or account identifier. Setup runs separately in preview and production. This replaces the unsuccessful build/environment-variable provisioning. Netlify's configuration tool reported successful writes but returned no environment settings and the deployed function could not read them; no success claim is based on that tool response.
 
-Setup must be executed separately on the preview database and production database; a preview membership does not imply a production membership. The authorisation to deploy main and create both organisations was given explicitly by Simon on 5 October 2026.
+The authorisation to deploy main and create both organisations was given explicitly by Simon on 5 October 2026.
 
 ## Validation
 
-Build and strict TypeScript checks pass. Nine PostgreSQL-engine test groups exercise the real migrations and service queries:
+Build and strict TypeScript checks pass. Eight PostgreSQL-engine test groups exercise the real migrations and service queries:
 
 1. Report → action → closure → history → export reconciliation.
 2. Cross-organisation/pharmacy access, unrelated staff incident access and staff review/export denial.
@@ -38,10 +38,9 @@ Build and strict TypeScript checks pass. Nine PostgreSQL-engine test groups exer
 5. Invalid input/owner/dates and inactive membership.
 6. Audit/report immutability and full rollback when audit insertion fails.
 7. Same-origin and JSON mutation checks.
-8. Setup key denial and disabled setup behavior.
-9. Two organisations, 16 Stacks sites, two demo sites, repeat-safe administrator assignment, access verification and no reactivation after revocation.
+8. Verified-identity setup denial, two organisations, 16 Stacks sites, two demo sites, repeat-safe administrator assignment, access verification and no reactivation after revocation.
 
-Tests run in PGlite against PostgreSQL SQL. Hosted setup separately verifies actual database memberships before it reports success. The browser smoke script remains available in `tests/ui-smoke.mjs`; local execution was blocked because Chromium was unavailable and its download failed. Deployed user screenshots provide sign-in evidence, but a complete browser flow, simultaneous-submit load check and restore drill remain outstanding.
+Tests run in PGlite against PostgreSQL SQL. The setup operation queries actual database memberships before returning a verified result. The browser smoke script remains available in `tests/ui-smoke.mjs`; local execution was blocked because Chromium was unavailable and its download failed. Deployed user screenshots provide sign-in evidence, but a complete browser flow, simultaneous-submit load check and restore drill remain outstanding.
 
 ## Next increments and limits
 

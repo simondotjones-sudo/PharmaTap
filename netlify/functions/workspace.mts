@@ -1,6 +1,7 @@
 import type { Config } from '@netlify/functions';
 import { getUser } from '@netlify/identity';
 import { getDatabase } from '@netlify/database';
+import {initialiseApprovedAdministrator} from './_shared/installation';
 import { Fault,session,list,createReport,updateAction,history,exportPharmacy } from './_shared/service';
 import {guard} from './_shared/http';
 export {guard} from './_shared/http';
@@ -15,6 +16,7 @@ export default async (req:Request) => {
   const url=new URL(req.url),path=url.pathname.slice('/api/workspace'.length);
   let result;
   if(req.method==='GET'&&path==='/session')result=await session(client,actor);
+  else if(req.method==='POST'&&path==='/initialise')result=await initialiseApprovedAdministrator(client,actor);
   else if(req.method==='GET'&&path==='/reports')result=await list(client,actor,url.searchParams.get('pharmacyId')||'');
   else if(req.method==='GET'&&path==='/export')result=await exportPharmacy(client,actor,url.searchParams.get('pharmacyId')||'');
   else if(req.method==='GET'&&/^\/reports\/[^/]+\/history$/.test(path))result=await history(client,actor,path.split('/')[2]);

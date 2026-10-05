@@ -1,9 +1,12 @@
-import { timingSafeEqual } from 'node:crypto';
+import {createHash} from 'node:crypto';
 import { Fault,uuid,session,type DB } from './service';
-export function checkSetupKey(supplied:string|null,expected:string|undefined){
- if(!expected||expected.length<32)throw new Fault(404,'Setup is disabled.');
- const a=Buffer.from(supplied||''),b=Buffer.from(expected);
- if(a.length!==b.length||!timingSafeEqual(a,b))throw new Fault(403,'Setup authorisation required.');
+export async function initialiseApprovedAdministrator(db:DB,actor:{id:string}){
+ const configuration=await db.query("SELECT identity_fingerprint FROM installation_authorisation WHERE key='initial-organisations'");
+ const fingerprint=createHash('sha256').update(actor.id).digest('hex');
+ if(!configuration.rows.length||configuration.rows[0].identity_fingerprint!==fingerprint)return {initialised:false};
+ const completed=await db.query("SELECT configured_user_id FROM installation_setup WHERE key='initial-organisations'");
+ if(completed.rows.length){if(completed.rows[0].configured_user_id!==actor.id)throw new Fault(409,'Setup is assigned to a different administrator.');return {initialised:true,alreadyConfigured:true};}
+ const result=await initialiseOrganisations(db,actor.id);return {initialised:true,...result};
 }
 export async function initialiseOrganisations(db:DB,userId:string){
  uuid(userId);
