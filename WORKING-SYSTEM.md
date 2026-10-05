@@ -51,3 +51,5 @@ Client-approved report fields, role matrix, hosting/retention arrangements, moni
 ## Home and profile
 
 Signed-in users land on the six-tile Home screen. Profile contains organisation, site and role selectors plus sign-out. Organisation administrators can select admin, pharmacist or staff views; other accounts can select their assigned role or a lower role. Every server record operation verifies the selected role against the active site membership. SOPs, Checks and Training are marked Coming soon; reports, maintenance reports and actions use the working database.
+
+The working workspace retains the Back / Home / Menu / Ask navigation pill and header action bell. The red badge counts the current user’s open actions at the selected site. Ask provides live report/action summaries and workflow shortcuts; AI and approved SOP retrieval are not yet implemented. Navigation DOM tests cover drawer links, Back, report details, live action counts, overlay draft preservation, profile and sign-out.

@@ -2,6 +2,9 @@ import { login,logout,getUser,handleAuthCallback,acceptInvite,updateUser,request
 const root=document.querySelector<HTMLElement>('#workspace')!,account=document.querySelector<HTMLElement>('#account')!;
 const escape=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 let userId='',organisations:any[]=[],organisationId='',pharmacies:any[]=[],pharmacyId='',data:any={reports:[],reviewers:[],role:'staff'},tab='home',viewRole='',profileOpen=false;
+let menuOpen=false,askOpen=false,screen='list',recordId='',navChoice='home';
+const pageHistory:{tab:string,screen:string,recordId:string}[]=[];
+let askMessages:{question:string,answer:string}[]=[];
 let retry:{key:string,body:any}|null=null;
 function message(text:string){const el=document.querySelector('#message')!;el.textContent=text;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),6000);}
 async function api(path:string,options:RequestInit={}){
@@ -12,7 +15,7 @@ async function api(path:string,options:RequestInit={}){
 const stamp=(v:string)=>new Date(v).toLocaleString('en-IE',{dateStyle:'medium',timeStyle:'short'});
 const local=(d:Date)=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
 function signIn(error=''){
- account.innerHTML='';root.innerHTML=`<section class="card login"><h1>Sign in</h1><p class="muted">Your pharmacy workspace.</p><form id="login"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><p class="error" id="login-error">${escape(error)}</p><button>Sign in</button> <button type="button" id="forgot" class="secondary">Reset password</button><div class="toolbar"><button type="button" id="accept-invitation" class="secondary">Accept invitation</button></div></form></section>`;
+ account.innerHTML='';document.querySelector('#navigation-root')?.remove();document.querySelector('#overlay-root')?.remove();menuOpen=false;askOpen=false;askMessages=[];pageHistory.length=0;screen='list';root.innerHTML=`<section class="card login"><h1>Sign in</h1><p class="muted">Your pharmacy workspace.</p><form id="login"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><p class="error" id="login-error">${escape(error)}</p><button>Sign in</button> <button type="button" id="forgot" class="secondary">Reset password</button><div class="toolbar"><button type="button" id="accept-invitation" class="secondary">Accept invitation</button></div></form></section>`;
  document.querySelector('#login')!.addEventListener('submit',async e=>{
   e.preventDefault();const form=e.target as HTMLFormElement,button=form.querySelector('button')!;button.disabled=true;
   try{const f=new FormData(form);await login(String(f.get('email')),String(f.get('password')));form.reset();await start();}catch(e){document.querySelector('#login-error')!.textContent=(e as Error).message;}finally{button.disabled=false;}
@@ -38,16 +41,19 @@ async function start(){
  if(!pharmacies.some(p=>p.id===pharmacyId&&p.organisation_id===organisationId))pharmacyId=pharmacies.find(p=>p.organisation_id===organisationId)!.id;
  await refresh();
 }
-async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));render();}
+async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));screen='list';render();}
 const roleLabel=(role:string)=>({'staff':'Staff','manager':'Pharmacist','superintendent':'Organisation admin'}[role]||role);
 function render(){
  const site=pharmacies.find(p=>p.id===pharmacyId),organisation=organisations.find(o=>o.id===organisationId),accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
  const roles=site.role==='superintendent'?['superintendent','manager','staff']:site.role==='manager'?['manager','staff']:['staff'];
  const open=data.reports.filter((r:any)=>r.status!=='Closed'),overdue=open.filter((r:any)=>Date.parse(r.due_at)<Date.now());
+ document.querySelector('#action-bell')?.remove();
+ const count=open.filter((r:any)=>r.owner_id===userId).length;
+ account.insertAdjacentHTML('afterbegin',`<button id="action-bell" class="topbar-bell" aria-label="My Actions${count?', '+count+' outstanding actions':''}" title="My Actions">${icon('bell')}${count?`<span class="action-count" aria-hidden="true">${count>99?'99+':count}</span>`:''}</button>`);
  const trigger=document.querySelector('#profile-trigger');trigger?.setAttribute('aria-expanded',String(profileOpen));
  document.querySelector('#profile-panel')?.remove();
  account.insertAdjacentHTML('beforeend',`<section id="profile-panel" class="profile-panel" ${profileOpen?'':'hidden'} aria-label="Profile settings"><h2>${escape(site.display_name)}</h2><label>Organisation<select id="organisation">${organisations.map(o=>`<option value="${escape(o.id)}" ${o.id===organisationId?'selected':''}>${escape(o.name)}</option>`).join('')}</select></label><label>Site<select id="pharmacy">${accessibleSites.map(p=>`<option value="${escape(p.id)}" ${p.id===pharmacyId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label><label>Role<select id="role">${roles.map(r=>`<option value="${r}" ${r===(viewRole||site.role)?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></label><button id="logout" class="secondary">Sign out</button></section>`);
- root.innerHTML=`<div class="site-context"><span>${escape(organisation.name)} · ${escape(site.name)}</span><small>${escape(roleLabel(data.role))}</small></div><nav class="toolbar" aria-label="Workspace navigation"><button id="home" class="secondary" aria-pressed="${tab==='home'}">Home</button><button id="reports" class="secondary" aria-pressed="${tab==='reports'}">Reports</button><button id="actions" class="secondary" aria-pressed="${tab==='actions'}">My Actions (${open.filter((r:any)=>r.owner_id===userId).length})</button></nav>${tab==='home'?'':`<h1>${tab==='actions'?'My Actions':'Reports'}</h1><div class="toolbar"><button id="new">Report</button><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div>`}<section id="content"></section>`;
+ root.innerHTML=`<div class="site-context"><span>${escape(organisation.name)} · ${escape(site.name)}</span><small>${escape(roleLabel(data.role))}</small></div>${!['reports','actions'].includes(tab)?'':`<h1>${tab==='actions'?'My Actions':tab==='reports'?'Reports':'Workspace'}</h1><div class="toolbar"><button id="new">Report</button><button id="refresh" class="secondary">Refresh</button>${data.role!=='staff'?'<button id="export" class="secondary">Export records</button>':''}</div><div class="summary"><span><strong>${data.reports.length}</strong>reports</span><span><strong>${open.length}</strong>open</span><span><strong>${overdue.length}</strong>overdue</span></div>`}<section id="content"></section>`;
  const content=document.querySelector('#content')!;
  const records=tab==='actions'?data.reports.filter((r:any)=>r.owner_id===userId&&r.status!=='Closed'):data.reports;
  content.innerHTML=records.map((r:any)=>`<article class="card"><div class="row"><div><small>${escape(r.type)} · ${escape(stamp(r.created_at))}</small><h2>${escape(r.title)}</h2></div><span class="pill ${r.status!=='Closed'&&Date.parse(r.due_at)<Date.now()?'overdue':''}">${escape(r.status)}</span></div><p class="muted">Reviewer: ${escape(r.owner_name)} · Due ${escape(stamp(r.due_at))}</p><button class="secondary" data-record="${escape(r.id)}">View report</button></article>`).join('')||'<section class="card"><h2>All clear</h2><p>No records in this view.</p></section>';
@@ -55,30 +61,69 @@ function render(){
  document.querySelector('#pharmacy')!.addEventListener('change',async e=>{await switchSite((e.target as HTMLSelectElement).value);});
  document.querySelector('#role')!.addEventListener('change',async e=>{viewRole=(e.target as HTMLSelectElement).value;retry=null;try{await refresh();}catch(e){message((e as Error).message);}});
  document.querySelector('#logout')!.addEventListener('click',async()=>{try{await logout();}finally{data={reports:[],reviewers:[],role:'staff'};retry=null;pharmacies=[];userId='';viewRole='';profileOpen=false;tab='home';signIn();}});
- for(const name of ['home','reports','actions'])document.querySelector('#'+name)!.addEventListener('click',()=>{tab=name;render();});
- document.querySelector('#new')?.addEventListener('click',newReport);
+ document.querySelector('#new')?.addEventListener('click',()=>newReport());
  document.querySelector('#refresh')?.addEventListener('click',()=>refresh().catch(e=>message(e.message)));
  document.querySelector('#export')?.addEventListener('click',async()=>{try{const result=await api('/export?pharmacyId='+pharmacyId);const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='PharmaTap-records-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(url);message(`${result.reportCount} reports exported with their audit history.`);}catch(e){message((e as Error).message);}});
  if(tab==='home'){
   const icons=['M12 5v14M5 12h14','M4 4h6l2 2 2-2h6v16h-6l-2 2-2-2H4zM12 6v16','M5 3h14v18H5zM8 11l2 2 5-5','M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-4 4-4-4z','M5 5h14M5 12h14M5 19h14','M3 8l9-5 9 5-9 5zM6 10v7l6 4 6-4v-7'];
   content.innerHTML='<h1 class="sr-only">Home</h1><section class="home-tasks" aria-label="Pharmacy tasks">'+[['Report','Medication errors and near misses','report'],['SOPs','Find and read procedures','sops'],['Checks','Record daily checks','checks'],['Faults','Equipment or premises issues','faults'],['Actions','View tasks and due dates','actions'],['Training','Courses and SOP updates','training']].map(([title,description,target],i)=>`<button class="home-task" data-task="${target}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[i]}"/></svg><strong>${title}</strong><span>${description}</span>${['sops','checks','training'].includes(target)?'<small>Coming soon</small>':''}</button>`).join('')+'</section>';
-  document.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click',()=>{const task=(el as HTMLElement).dataset.task!;if(['sops','checks','training'].includes(task)){message('This module is awaiting implementation.');return;}tab=task==='actions'?'actions':'reports';profileOpen=false;render();if(task==='report'||task==='faults'){newReport();if(task==='faults'){const type=document.querySelector<HTMLSelectElement>('[name=type]');if(type)type.value='Maintenance';}}}));
+  document.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click',()=>{const task=(el as HTMLElement).dataset.task!;if(['sops','checks','training'].includes(task)){message('This module is awaiting implementation.');return;}navigate(task==='actions'?'actions':'reports');if(task==='report'||task==='faults'){newReport();if(task==='faults'){const type=document.querySelector<HTMLSelectElement>('[name=type]');if(type)type.value='Maintenance';}}}));
  }
+ if(!['home','reports','actions'].includes(tab)){const titles:Record<string,string>={sops:'SOP Library',checks:'Checks',maintenance:'Maintenance',learning:'Learning',recalls:'Recalls',inspections:'Inspections'};content.innerHTML=tab==='maintenance'?'<section class="card"><h2>Maintenance</h2><p>Record equipment or premises issues and assign a reviewer.</p><button id="maintenance-report">Report a fault</button></section>':`<section class="card"><h2>${titles[tab]}</h2><p>This module is awaiting implementation.</p></section>`;document.querySelector('#maintenance-report')?.addEventListener('click',()=>{navigate('reports');newReport();const type=document.querySelector<HTMLSelectElement>('[name=type]');if(type)type.value='Maintenance';});}
+ renderNavigation();
  document.querySelectorAll('[data-record]').forEach(el=>el.addEventListener('click',()=>viewReport((el as HTMLElement).dataset.record!)));
 }
 async function switchSite(id:string){
  pharmacyId=id;const site=pharmacies.find(p=>p.id===id);organisationId=site.organisation_id;
  if(viewRole&&(['staff','manager','superintendent'].indexOf(viewRole)>['staff','manager','superintendent'].indexOf(site.role)))viewRole='';
- retry=null;data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening site…</p>';
+ retry=null;pageHistory.length=0;askMessages=[];menuOpen=false;askOpen=false;screen='list';closeProfile();document.querySelector('#navigation-root')?.remove();document.querySelector('#overlay-root')?.remove();data={reports:[],reviewers:[],role:'staff'};root.innerHTML='<p>Opening site…</p>';
  try{await refresh();}catch(e){root.innerHTML='<p>Could not open this site. Reload to try again.</p>';message((e as Error).message);}
 }
-document.addEventListener('click',e=>{const target=e.target as Element;if(target.closest('#profile-trigger')){profileOpen=!profileOpen;render();}else if(profileOpen&&!target.closest('#account')){profileOpen=false;render();}if(target.closest('.brand')&&pharmacies.length){e.preventDefault();tab='home';profileOpen=false;render();}});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&profileOpen){profileOpen=false;render();document.querySelector<HTMLButtonElement>('#profile-trigger')?.focus();}});
-function newReport(){
+const paths:Record<string,string>={back:'M19 12H5 M10 7l-5 5 5 5',home:'M3 10l9-7 9 7v10H3z M9 20v-7h6v7',menu:'M4 6h16 M4 12h16 M4 18h16',spark:'M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3z',bell:'M5 17h14l-2-3V8a5 5 0 0 0-10 0v6z M10 21h4',close:'M6 6l12 12 M18 6L6 18'};
+function icon(name:string){return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"/></svg>`;}
+function remember(){pageHistory.push({tab,screen,recordId});}
+function closeProfile(){profileOpen=false;document.querySelector('#profile-panel')?.setAttribute('hidden','');document.querySelector('#profile-trigger')?.setAttribute('aria-expanded','false');}
+function navigate(to:string){
+ if(to!==tab||screen!=='list')remember();tab=to;screen='list';menuOpen=false;askOpen=false;closeProfile();navChoice=to==='home'?'home':'menu';render();window.scrollTo({top:0,behavior:'instant'});
+}
+function goBack(){
+ if(askOpen||menuOpen){askOpen=false;menuOpen=false;renderNavigation();return;}
+ const previous=pageHistory.pop();if(!previous)return;
+ tab=previous.tab;recordId=previous.recordId;screen='list';navChoice='back';closeProfile();render();
+ if(previous.screen==='report')newReport(false);else if(previous.screen==='detail')void viewReport(recordId,false);
+}
+function renderNavigation(){
+ let nav=document.querySelector('#navigation-root');if(!nav){nav=document.createElement('div');nav.id='navigation-root';document.body.append(nav);}
+ const selected=askOpen?'ask':menuOpen?'menu':navChoice,index=['back','home','menu','ask'].indexOf(selected);
+ nav.innerHTML=`<nav class="mobile-navigation" aria-label="Quick navigation"><span class="nav-highlight" aria-hidden="true" style="transform:translateX(${index*100}%)"></span>${[['back','back','Back'],['home','home','Home'],['menu',menuOpen?'close':'menu','Menu'],['ask','spark','Ask']].map(([action,ic,label])=>`<button data-nav-action="${action}" class="${selected===action?'selected':''}" aria-label="${action==='ask'?'Ask PharmaTap':label}" ${action==='back'&&!pageHistory.length&&!menuOpen&&!askOpen?'disabled':''} ${['menu','ask'].includes(action)?`aria-expanded="${action==='menu'?menuOpen:askOpen}" aria-controls="${action==='menu'?'navigation-drawer':'ask-panel'}"`:''}>${icon(ic)}<span>${label}</span></button>`).join('')}</nav>`;
+ let overlays=document.querySelector('#overlay-root');if(!overlays){overlays=document.createElement('div');overlays.id='overlay-root';document.body.append(overlays);}
+ overlays.innerHTML=menuOpen?`<div class="navigation-shade" data-nav-action="dismiss"></div><aside id="navigation-drawer" class="navigation-drawer" aria-label="Main menu"><div class="row"><h2>Menu</h2><button data-nav-action="dismiss" class="icon-button" aria-label="Close menu">${icon('close')}</button></div>${organisations.find(o=>o.id===organisationId)?.name==='Stacks Pharmacies'?'<img class="client-logo" src="/assets/stacks-logo.png" alt="Stacks Pharmacy">':''}<nav aria-label="Main navigation">${[['home','Home'],['reports','Reports'],['actions','My Actions'],['sops','SOP Library'],['checks','Checks'],['maintenance','Maintenance'],['learning','Learning'],['recalls','Recalls'],['inspections','Inspections']].map(([id,label])=>`<button data-page="${id}" ${tab===id?'aria-current="page"':''}>${label}</button>`).join('')}</nav></aside>`:askOpen?`<div class="navigation-shade" data-nav-action="dismiss"></div><section id="ask-panel" class="ask-panel" role="dialog" aria-modal="true" aria-labelledby="ask-title"><div class="row"><h2 id="ask-title">${icon('spark')} Ask PharmaTap</h2><button data-nav-action="dismiss" class="icon-button" aria-label="Close Ask PharmaTap">${icon('close')}</button></div><div class="ask-messages">${askMessages.map(m=>`<p class="ask-question">${escape(m.question)}</p><p class="ask-answer">${escape(m.answer)}</p>`).join('')}</div><div class="ask-suggestions"><button data-ask="What needs attention?">What needs attention?</button><button data-page="reports">View reports</button><button data-assistant-report>Record a near miss</button></div><form id="ask-form"><label class="sr-only" for="ask-input">Ask PharmaTap</label><textarea id="ask-input" name="question" rows="2" placeholder="Ask PharmaTap…" required maxlength="1000"></textarea><button>Send</button></form></section>`:'';
+ if(askOpen){document.querySelector('#ask-form')!.addEventListener('submit',e=>{e.preventDefault();answerQuestion(String(new FormData(e.target as HTMLFormElement).get('question')));});document.querySelector('#ask-input')!.addEventListener('keydown',e=>{const key=e as KeyboardEvent;if(key.key==='Enter'&&!key.shiftKey){key.preventDefault();(document.querySelector('#ask-form') as HTMLFormElement).requestSubmit();}});}
+}
+function answerQuestion(question:string){
+ const q=question.trim();if(!q)return;const mine=data.reports.filter((r:any)=>r.owner_id===userId&&r.status!=='Closed'),overdue=mine.filter((r:any)=>Date.parse(r.due_at)<Date.now());
+ const answer=/attention|action|due|overdue|task/i.test(q)?`You have ${mine.length} open actions at ${pharmacies.find(p=>p.id===pharmacyId).name}, including ${overdue.length} overdue. Open My Actions to review them.`:/report|near miss|error|fault|maintenance/i.test(q)?`There are ${data.reports.length} reports visible in your current site and role. Use View reports or Record a near miss below to continue.`:/sop|procedure|training|check/i.test(q)?'This module is awaiting implementation. Approved procedures have not been loaded into this workspace yet.':'I can show your current reports, outstanding actions and deadlines, or help you open a report. Wider knowledge search is awaiting implementation.';
+ askMessages.push({question:q,answer});renderNavigation();document.querySelector<HTMLTextAreaElement>('#ask-input')?.focus();
+}
+document.addEventListener('click',e=>{
+ const target=e.target as Element;
+ if(target.closest('#profile-trigger')){if(!pharmacies.length)return;profileOpen=!profileOpen;document.querySelector('#profile-panel')?.toggleAttribute('hidden',!profileOpen);target.closest('#profile-trigger')?.setAttribute('aria-expanded',String(profileOpen));menuOpen=false;askOpen=false;renderNavigation();return;}
+ if(profileOpen&&!target.closest('#account'))closeProfile();
+ if(target.closest('#action-bell')){navigate('actions');return;}
+ if(target.closest('.brand')&&pharmacies.length){e.preventDefault();navigate('home');return;}
+ const action=target.closest<HTMLElement>('[data-nav-action]')?.dataset.navAction;
+ if(action){if(action==='back')goBack();else if(action==='home')navigate('home');else{closeProfile();menuOpen=action==='menu'?!menuOpen:false;askOpen=action==='ask'?!askOpen:false;renderNavigation();if(askOpen)document.querySelector<HTMLTextAreaElement>('#ask-input')?.focus();else if(menuOpen)document.querySelector<HTMLButtonElement>('#navigation-drawer button')?.focus();}return;}
+ const page=target.closest<HTMLElement>('[data-page]')?.dataset.page;if(page){navigate(page);return;}
+ const question=target.closest<HTMLElement>('[data-ask]')?.dataset.ask;if(question){answerQuestion(question);return;}
+ if(target.closest('[data-assistant-report]')){navigate('reports');newReport();}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Tab'&&(menuOpen||askOpen)){const panel=document.querySelector(askOpen?'#ask-panel':'#navigation-drawer'),items=panel?.querySelectorAll<HTMLElement>('button,textarea,select,input,a[href]');if(items?.length){const first=items[0],last=items[items.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}}if(e.key==='Escape'){if(profileOpen){closeProfile();document.querySelector<HTMLButtonElement>('#profile-trigger')?.focus();}else if(menuOpen||askOpen){const action=askOpen?'ask':'menu';menuOpen=false;askOpen=false;renderNavigation();document.querySelector<HTMLButtonElement>(`[data-nav-action=${action}]`)?.focus();}}});
+function newReport(pushHistory=true){
  if(!data.reviewers.length){message('An active pharmacy reviewer must be assigned before reports can be submitted.');return;}
+ if(pushHistory)remember();screen='report';renderNavigation();
  const now=local(new Date()),tomorrow=local(new Date(Date.now()+86400000));
  document.querySelector('#content')!.innerHTML=`<section class="card"><h2>Report</h2><p class="help">Record the operational issue. Keep patient names, prescription identifiers and other patient details in your designated clinical system.</p><form id="report-form"><div class="columns"><label>Type<select name="type">${['Near miss','Medication error','Complaint','Safety concern','Maintenance'].map(t=>`<option>${t}</option>`).join('')}</select></label><label>Occurred<input type="datetime-local" name="occurred" value="${now}" required></label></div><label>Title<input name="title" minlength="3" maxlength="160" required></label><label>What happened?<textarea name="detail" minlength="10" maxlength="4000" required></textarea></label><div class="columns"><label>Reviewer<select name="owner">${data.reviewers.map((r:any)=>`<option value="${escape(r.user_id)}">${escape(r.display_name)}</option>`).join('')}</select></label><label>Review deadline<input type="datetime-local" name="due" value="${tomorrow}" required></label></div><p id="save-status" role="status"></p><button id="submit-report">Submit report</button> <button class="secondary" type="button" id="cancel">Cancel</button></form></section>`;
- document.querySelector('#cancel')!.addEventListener('click',()=>{retry=null;render();});
+ document.querySelector('#cancel')!.addEventListener('click',()=>{retry=null;screen='list';render();});
  document.querySelector('#report-form')!.addEventListener('submit',async e=>{
   e.preventDefault();const form=e.target as HTMLFormElement,fields=new FormData(form),button=document.querySelector<HTMLButtonElement>('#submit-report')!,status=document.querySelector('#save-status')!;
   const body={pharmacyId,type:fields.get('type'),title:fields.get('title'),detail:fields.get('detail'),occurredAt:new Date(String(fields.get('occurred'))).toISOString(),dueAt:new Date(String(fields.get('due'))).toISOString(),ownerId:fields.get('owner')};
@@ -87,10 +132,11 @@ function newReport(){
   try{await api('/reports',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':retry.key},body:JSON.stringify(body)});retry=null;status.textContent='Saved. Your reviewer has an action.';form.reset();message('Report saved. Review action created.');try{await refresh();}catch{status.textContent='Report saved. Refresh the page to view it.';}}catch(e){status.textContent=(e as Error).message+' Your draft remains here; retry when ready.';}finally{button.disabled=false;}
  });
 }
-async function viewReport(id:string){
+async function viewReport(id:string,pushHistory=true){
  const r=data.reports.find((r:any)=>r.id===id);if(!r)return;
+ if(pushHistory)remember();screen='detail';recordId=id;renderNavigation();
  document.querySelector('#content')!.innerHTML=`<article class="card"><small>${escape(r.type)} · Report ${escape(r.id)}</small><h2>${escape(r.title)}</h2><p class="detail">${escape(r.detail)}</p><p>Occurred ${escape(stamp(r.occurred_at))}</p><p>Reviewer: ${escape(r.owner_name)} · ${escape(r.status)}</p>${r.resolution?`<h3>Review notes</h3><p class="detail">${escape(r.resolution)}</p>`:''}${data.role!=='staff'&&r.status!=='Closed'?`<form id="review-form"><label>Status<select name="status">${['Open','Awaiting review','Closed'].map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}</select></label><label>Review notes<textarea name="resolution" maxlength="4000">${escape(r.resolution)}</textarea></label><button>Save review</button></form>`:''}<div class="toolbar"><button class="secondary" id="back">Back</button></div><h3>History</h3><div id="history">Loading history…</div></article>`;
- document.querySelector('#back')!.addEventListener('click',render);
+ document.querySelector('#back')!.addEventListener('click',goBack);
  document.querySelector('#review-form')?.addEventListener('submit',async e=>{
   e.preventDefault();const form=e.target as HTMLFormElement,fields=new FormData(form),button=form.querySelector('button')!;button.disabled=true;
   try{await api('/actions/'+r.action_id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:r.version,status:fields.get('status'),resolution:fields.get('resolution')})});message('Review saved.');await refresh();}catch(e){message((e as Error).message);}finally{button.disabled=false;}
