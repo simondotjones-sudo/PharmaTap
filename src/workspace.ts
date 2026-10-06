@@ -3,7 +3,8 @@ import {renderManage} from './manage-ui';
 import {renderSops,resetSops,sopsBack} from './sops-ui';
 import {renderTraining,resetTraining,trainingBack} from './training-ui';
 import {renderChecks,resetChecks,clearChecks,checksBack} from './checks-ui';
-import { login,logout,getUser,handleAuthCallback,acceptInvite,updateUser,requestPasswordRecovery } from '@netlify/identity';
+import { login,logout,getUser,getSettings,handleAuthCallback,acceptInvite,updateUser,requestPasswordRecovery } from '@netlify/identity';
+import {registrationForm} from './registration';
 import {reportTypes,type ReportType} from './report-types';
 import {prepareReportPhoto} from './report-photo';
 const root=document.querySelector<HTMLElement>('#workspace')!,account=document.querySelector<HTMLElement>('#account')!;
@@ -23,6 +24,7 @@ async function api(path:string,options:RequestInit={}){
 const stamp=(v:string)=>new Date(v).toLocaleString('en-IE',{dateStyle:'medium',timeStyle:'short'});
 const local=(d:Date)=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
 function signIn(error=''){
+ userId='';
  clearChecks();resetTraining();resetSops();
  account.innerHTML='';document.querySelector('#navigation-root')?.remove();document.querySelector('#overlay-root')?.remove();menuOpen=false;askOpen=false;askMessages=[];pageHistory.length=0;screen='list';root.innerHTML=`<section class="card login"><h1>Sign in</h1><p class="muted">Your pharmacy workspace.</p><form id="login"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><p class="error" id="login-error">${escape(error)}</p><button>Sign in</button> <button type="button" id="forgot" class="secondary">Reset password</button><div class="toolbar"><button type="button" id="accept-invitation" class="secondary">Accept invitation</button></div></form></section>`;
  document.querySelector('#login')!.addEventListener('submit',async e=>{
@@ -30,7 +32,19 @@ function signIn(error=''){
   try{const f=new FormData(form);await login(String(f.get('email')),String(f.get('password')));form.reset();await start();}catch(e){document.querySelector('#login-error')!.textContent=(e as Error).message;}finally{button.disabled=false;}
  });
  document.querySelector('#accept-invitation')!.addEventListener('click',invitationForm);
+ const loginForm=document.querySelector('#login')!;
+ loginForm.insertAdjacentHTML('afterend','<p class="help" id="registration-prompt" hidden>New to PharmaTap? <a class="auth-link" href="/register" id="create-account">Create account</a></p>');
+ const registrationPrompt=document.querySelector<HTMLElement>('#registration-prompt')!;
+ document.querySelector('#create-account')!.addEventListener('click',e=>{e.preventDefault();openRegistration();});
+ void getSettings().then(settings=>{if(registrationPrompt.isConnected)registrationPrompt.hidden=settings.disableSignup;}).catch(()=>{if(registrationPrompt.isConnected)registrationPrompt.hidden=false;});
  document.querySelector('#forgot')!.addEventListener('click',async()=>{const email=(document.querySelector('[name=email]') as HTMLInputElement);if(!email.reportValidity()||!email.value)return;try{await requestPasswordRecovery(email.value);message('If an account exists, check your email for the reset link.');}catch{message('Password reset is unavailable. Please contact your administrator.');}});
+}
+function openRegistration(){
+ history.replaceState(null,'','/register');
+ void registrationForm(root,async()=>{history.replaceState(null,'','/workspace.html');await start();},()=>{history.replaceState(null,'','/workspace.html');signIn();});
+}
+async function signOut(){
+ try{await logout();}finally{data={reports:[],reviewers:[],role:'staff'};retry=null;pharmacies=[];organisations=[];organisationId='';pharmacyId='';userId='';viewRole='';profileOpen=false;tab='home';history.replaceState(null,'','/workspace.html');signIn();}
 }
 function invitationForm(){
  root.innerHTML='<section class="card login"><h1>Accept invitation</h1><p class="help">Paste the link from your invitation email to activate your account in this preview.</p><form id="invitation"><label>Invitation link<input name="link" type="url" autocomplete="off" required></label><label>New password<input name="password" type="password" autocomplete="new-password" minlength="12" required></label><p class="error" id="invitation-error"></p><button>Activate account</button> <button class="secondary" id="invitation-back" type="button">Back</button></form></section>';
@@ -41,17 +55,17 @@ function invitationForm(){
  });
 }
 async function start(){
- const user=await getUser();if(!user){signIn();return;}userId=user.id;
+ const user=await getUser();if(!user){signIn();if(/^\/register\/?$/.test(location.pathname))openRegistration();return;}userId=user.id;
  await api('/initialise',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
  const result=await api('/session');pharmacies=result.pharmacies;organisations=(result.organisations||[]).filter((o:any)=>pharmacies.some(p=>p.organisation_id===o.id));if(!organisations.length)organisations=[...new Map(pharmacies.map(p=>[p.organisation_id,{id:p.organisation_id,name:p.organisation_name,role:p.role}])).values()];
  account.innerHTML='<button id="profile-trigger" class="avatar" aria-label="Profile" aria-expanded="false" aria-controls="profile-panel">'+escape((user.name||'Simon').split(' ').map((n:string)=>n[0]).join('').slice(0,2))+'</button>';
- if(!pharmacies.length){root.innerHTML=`<section class="card"><h1>Access pending</h1><p>Your administrator needs to assign your pharmacy and role before you can use the workspace.</p><p class="help">Account reference: <code>${escape(userId)}</code></p></section>`;return;}
+ if(!pharmacies.length){account.innerHTML='<button id="pending-logout" class="secondary">Sign out</button>';root.innerHTML=`<section class="card"><h1>Access pending</h1><p>You are signed in as <strong>${escape(user.email)}</strong>.</p><p>Your administrator needs to assign your pharmacy and role before you can use the workspace.</p><button id="check-access">Check access</button><p class="help">Account reference: <code>${escape(userId)}</code></p></section>`;document.querySelector('#pending-logout')!.addEventListener('click',()=>void signOut());document.querySelector('#check-access')!.addEventListener('click',async e=>{const button=e.currentTarget as HTMLButtonElement;button.disabled=true;try{await start();}catch(e){message((e as Error).message);}finally{button.disabled=false;}});return;}
  if(!organisations.some(o=>o.id===organisationId))organisationId=organisations[0].id;
  if(!pharmacies.some(p=>p.id===pharmacyId&&p.organisation_id===organisationId))pharmacyId=pharmacies.find(p=>p.organisation_id===organisationId)!.id;
  await refresh();
 }
 async function refresh(){data=await api('/reports?pharmacyId='+encodeURIComponent(pharmacyId));screen='list';render();}
-const APP_VERSION='1.05.10.26.12';
+const APP_VERSION='1.06.10.26.1';
 const roleLabel=(role:string)=>({'staff':'Staff','manager':'Pharmacist','superintendent':'Organisation admin'}[role]||role);
 function render(){
  const site=pharmacies.find(p=>p.id===pharmacyId),organisation=organisations.find(o=>o.id===organisationId),accessibleSites=pharmacies.filter(p=>p.organisation_id===organisationId);
@@ -71,7 +85,7 @@ function render(){
  document.querySelector('#organisation')!.addEventListener('change',async e=>{organisationId=(e.target as HTMLSelectElement).value;await switchSite(pharmacies.find(p=>p.organisation_id===organisationId)!.id);});
  document.querySelector('#pharmacy')!.addEventListener('change',async e=>{await switchSite((e.target as HTMLSelectElement).value);});
  document.querySelector('#role')!.addEventListener('change',async e=>{viewRole=(e.target as HTMLSelectElement).value;retry=null;try{await refresh();}catch(e){message((e as Error).message);}});
- document.querySelector('#logout')!.addEventListener('click',async()=>{try{await logout();}finally{data={reports:[],reviewers:[],role:'staff'};retry=null;pharmacies=[];userId='';viewRole='';profileOpen=false;tab='home';signIn();}});
+ document.querySelector('#logout')!.addEventListener('click',()=>void signOut());
  document.querySelectorAll<HTMLElement>('[data-report-mode]').forEach(el=>el.addEventListener('click',()=>{reportMode=el.dataset.reportMode!;screen='list';render();}));
  document.querySelector('#refresh')?.addEventListener('click',()=>refresh().catch(e=>message(e.message)));
  document.querySelector('#export')?.addEventListener('click',async()=>{try{const result=await api('/export?pharmacyId='+pharmacyId);const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='PharmaTap-records-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(url);message(`${result.reportCount} reports exported with their audit history.`);}catch(e){message((e as Error).message);}});
